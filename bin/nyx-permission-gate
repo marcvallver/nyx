@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+"""nyx-permission-gate — hook PreToolUse del perfil aislado de Nyx.
+
+Clasifica cada tool-call con nyx/policy.py:
+  allow/deny  -> decide al momento (lecturas/abrir apps vs rm -rf/sudo/BD/secretos).
+  gray        -> pregunta a Marc vía el daemon (popup), BLOQUEANDO hasta que decide.
+Sin daemon o sin respuesta -> deny (seguro por defecto). Pensado para el
+`PreToolUse` de ~/.config/nyx/settings.json.
+"""
+
+import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+
+from nyx import policy  # noqa: E402
+from nyx.client import send  # noqa: E402
+
+
+def emit(decision: str, reason: str) -> None:
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": decision,
+            "permissionDecisionReason": reason,
+        }
+    }))
+
+
+def main() -> None:
+    try:
+        data = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        emit("deny", "entrada inválida")
+        return
+    tool = data.get("tool_name", "")
+    tin = data.get("tool_input") or {}
+    decision, reason = policy.classify(tool, tin)
+    if decision in ("allow", "deny"):
+        emit(decision, reason)
+        return
+    # zona gris -> confirmación de Marc (espera larga; el hook tiene timeout 300s)
+    cmd = tin.get("command") or json.dumps(tin, ensure_ascii=False)[:300]
+    resp = send({"op": "confirm", "tool": tool, "command": cmd,
+                 "reason": reason, "tool_input": tin}, timeout=295)
+    if not resp:
+        emit("deny", "sin confirmación (Nyx no responde)")
+    elif resp.get("decision") == "allow":
+        emit("allow", "confirmado por Marc")
+    else:
+        emit("deny", "denegado por Marc")
+
+
+if __name__ == "__main__":
+    main()

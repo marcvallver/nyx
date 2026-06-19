@@ -1,7 +1,8 @@
 """Servidor del socket UNIX de Nyx, integrado en el bucle GLib (Gio.SocketService).
 
-Una línea JSON por petición → el handler devuelve un dict → se responde con una
-línea JSON y se cierra la conexión. Verbos: ping, status, say, quit (y futuros).
+El handler recibe (msg, reply): debe llamar a `reply(dict)` para responder — YA (ops
+inmediatas) o MÁS TARDE (p.ej. `confirm`, que espera a que Marc decida en el popup;
+la conexión se mantiene abierta mientras tanto). reply escribe una línea JSON y cierra.
 """
 
 from __future__ import annotations
@@ -14,11 +15,9 @@ from gi.repository import Gio, GLib
 
 
 class SocketServer:
-    def __init__(self, path: str, handler: Callable[[dict], dict]):
+    def __init__(self, path: str, handler: Callable[[dict, Callable[[dict], None]], None]):
         self.path = path
         self.handler = handler
-        # Limpia un socket huérfano (instancia previa caída). La unicidad real la
-        # garantiza el application_id de Gtk.Application, así que aquí ya somos el primario.
         if os.path.exists(path):
             try:
                 os.unlink(path)
@@ -26,9 +25,7 @@ class SocketServer:
                 pass
         self.service = Gio.SocketService.new()
         addr = Gio.UnixSocketAddress.new(path)
-        self.service.add_address(
-            addr, Gio.SocketType.STREAM, Gio.SocketProtocol.DEFAULT, None
-        )
+        self.service.add_address(addr, Gio.SocketType.STREAM, Gio.SocketProtocol.DEFAULT, None)
         self.service.connect("incoming", self._on_incoming)
         self.service.start()
 
@@ -38,27 +35,33 @@ class SocketServer:
         return False
 
     def _on_line(self, dis, res, conn):
-        reply = {"ok": False, "error": "bad request"}
         try:
             data, _len = dis.read_line_finish_utf8(res)
         except GLib.Error:
             data = None
+
+        def reply(obj: dict) -> None:
+            try:
+                out = conn.get_output_stream()
+                out.write_all((json.dumps(obj) + "\n").encode(), None)
+                out.flush(None)
+            except GLib.Error:
+                pass
+            try:
+                conn.close(None)
+            except GLib.Error:
+                pass
+
         if data:
             try:
                 msg = json.loads(data)
-                if isinstance(msg, dict):
-                    reply = self.handler(msg) or {"ok": True}
             except json.JSONDecodeError:
-                pass
-            except Exception as e:  # un handler no debe tumbar el servidor
-                reply = {"ok": False, "error": repr(e)}
-        try:
-            out = conn.get_output_stream()
-            out.write_all((json.dumps(reply) + "\n").encode(), None)
-            out.flush(None)
-        except GLib.Error:
-            pass
-        try:
-            conn.close(None)
-        except GLib.Error:
-            pass
+                reply({"ok": False, "error": "bad json"})
+                return
+            if isinstance(msg, dict):
+                try:
+                    self.handler(msg, reply)  # el handler llama a reply (ahora o luego)
+                except Exception as e:  # un handler no debe tumbar el servidor
+                    reply({"ok": False, "error": repr(e)})
+                return
+        reply({"ok": False, "error": "bad request"})

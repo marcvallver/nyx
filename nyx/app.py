@@ -1,7 +1,6 @@
 """Daemon de Nyx: Gtk.Application (instancia única) que posee el socket de control
-y las superficies de UI. El orbe es el ÚNICO indicador: late tanto en los turnos de
-Nyx (chat) como en las sesiones de terminal de Marc (fichero claude-thinking.active),
-unificando el viejo sparkle. La confirmación de acciones llega en la Fase 4."""
+y las superficies de UI. Orbe (único indicador, late en terminal+chat), bocadillo,
+barra de entrada, y la confirmación de acciones (Fase 4: híbrido con confirmación)."""
 
 from __future__ import annotations
 
@@ -13,12 +12,13 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from . import streamparse  # noqa: E402
+from . import policy, streamparse  # noqa: E402
 from .activity import ActivityWatcher  # noqa: E402
 from .avatar import Orb  # noqa: E402
 from .backend import ClaudeBackend  # noqa: E402
 from .bubble import Bubble  # noqa: E402
 from .client import socket_path  # noqa: E402
+from .confirm import ConfirmPopup  # noqa: E402
 from .inputbar import InputBar  # noqa: E402
 from .ipc import SocketServer  # noqa: E402
 
@@ -30,48 +30,70 @@ class NyxApp(Gtk.Application):
         super().__init__(application_id="org.marc.nyx")
 
     def do_activate(self):
-        self.hold()  # seguir vivo sin ventanas visibles
+        self.hold()
         self._terminal_active = False
-        self._nyx_state = "idle"  # idle | thinking | talking (turnos propios de Nyx)
+        self._nyx_state = "idle"
         self.orb = Orb(self)
         self.bubble = Bubble(self)
         self.inputbar = InputBar(self, self.send_turn)
+        self.confirm_popup = ConfirmPopup(self)
         self.backend = ClaudeBackend(self._on_signal)
         self.server = SocketServer(socket_path(), self.handle)
-        # el orbe también reacciona a las sesiones de terminal (unifica el sparkle)
         self.activity = ActivityWatcher(ACTIVITY_FILE, self._on_terminal_activity)
 
-    # --- socket ---
-    def handle(self, msg: dict) -> dict:
+    # --- socket (handler diferido: debe llamar a reply) ---
+    def handle(self, msg: dict, reply) -> None:
         op = msg.get("op")
         if op == "ping":
-            return {"ok": True, "pong": True}
-        if op == "status":
-            return {"ok": True, "running": True, "busy": self.backend.busy,
-                    "session": self.backend.session_id}
-        if op == "say":
+            reply({"ok": True, "pong": True})
+        elif op == "status":
+            reply({"ok": True, "running": True, "busy": self.backend.busy,
+                   "session": self.backend.session_id})
+        elif op == "say":
             text = (msg.get("text") or "").strip()
             ttl = int(msg.get("ttl_ms") or 12000)
             if text:
                 GLib.idle_add(self.bubble.show_text, text, ttl)
-            return {"ok": True}
-        if op == "summon":
+            reply({"ok": True})
+        elif op == "summon":
             GLib.idle_add(self.inputbar.show)
-            return {"ok": True}
-        if op == "hide":
+            reply({"ok": True})
+        elif op == "hide":
             GLib.idle_add(self.inputbar.hide)
-            return {"ok": True}
-        if op == "ask":
+            reply({"ok": True})
+        elif op == "ask":
             text = (msg.get("text") or "").strip()
             if text:
                 GLib.idle_add(self.send_turn, text)
-            return {"ok": True, "busy": self.backend.busy}
-        if op == "quit":
+            reply({"ok": True, "busy": self.backend.busy})
+        elif op == "confirm":
+            GLib.idle_add(self._confirm, msg, reply)  # diferido: reply tras decidir
+        elif op == "quit":
             GLib.idle_add(self.quit)
-            return {"ok": True, "quitting": True}
-        return {"ok": False, "error": f"unknown op: {op!r}"}
+            reply({"ok": True, "quitting": True})
+        else:
+            reply({"ok": False, "error": f"unknown op: {op!r}"})
 
-    # --- estado del orbe (combina terminal + chat) ---
+    def _confirm(self, msg: dict, reply) -> bool:
+        tool = msg.get("tool", "")
+        command = msg.get("command", "")
+        reason = msg.get("reason", "")
+        tool_input = msg.get("tool_input") or {}
+
+        def on_decision(decision: str):
+            if decision == "always":
+                try:
+                    policy.learn(tool, tool_input)
+                except Exception:
+                    pass
+                reply({"decision": "allow", "learned": True})
+            else:
+                reply({"decision": decision})
+
+        self.confirm_popup.show(tool, command, reason, on_decision)
+        return False
+
+    # --- estado del orbe (terminal + chat) ---
     def _on_terminal_activity(self, active: bool) -> None:
         self._terminal_active = active
         self._refresh_orb()
@@ -100,8 +122,12 @@ class NyxApp(Gtk.Application):
 
     def _on_signal(self, sig) -> None:
         if isinstance(sig, streamparse.TextDelta):
-            self._set_nyx("talking")  # idempotente; "hablando" al primer token
+            self._set_nyx("talking")
             self.bubble.append(sig.text)
+        elif isinstance(sig, streamparse.AssistantMessage):
+            self._set_nyx("talking")
+            if not self.bubble._buf.strip():  # fallback si no llegaron deltas
+                self.bubble.append(sig.text)
         elif isinstance(sig, streamparse.Result):
             if sig.is_error and not self.bubble._buf.strip():
                 self.bubble.append(sig.text or "(error)")
