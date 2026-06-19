@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+"""nyx-ctl — control del daemon de Nyx.
+
+  on|start    lanza el daemon (si no corre) + escribe autostart KDE
+  off|stop    pide al daemon que se cierre (op quit) + quita autostart
+  toggle      alterna
+  status      running | stopped
+  say <texto> muestra un bocadillo
+  ping        diagnóstico
+
+Lanza el daemon con LD_PRELOAD (imprescindible para gtk4-layer-shell) y
+PYTHONPATH al repo, así que funciona estando symlinkado en ~/.local/bin.
+"""
+
+import os
+import subprocess
+import sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, REPO)
+
+from nyx.client import daemon_running, send  # noqa: E402
+
+PRELOAD = "/usr/lib/libgtk4-layer-shell.so"
+AUTOSTART = os.path.expanduser("~/.config/autostart/nyx.desktop")
+LOG = os.path.expanduser("~/.cache/nyx/daemon.log")
+
+
+def _write_autostart() -> None:
+    os.makedirs(os.path.dirname(AUTOSTART), exist_ok=True)
+    with open(AUTOSTART, "w") as f:
+        f.write(
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Nyx (asistente Claude)\n"
+            f"Exec=env LD_PRELOAD={PRELOAD} PYTHONPATH={REPO} python3 -m nyx\n"
+            "X-KDE-autostart-phase=2\n"
+            "OnlyShowIn=KDE;\n"
+        )
+
+
+def start() -> None:
+    if daemon_running():
+        print("nyx: ya en marcha")
+    else:
+        os.makedirs(os.path.dirname(LOG), exist_ok=True)
+        env = os.environ.copy()
+        env["LD_PRELOAD"] = PRELOAD
+        env["PYTHONPATH"] = REPO + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        with open(LOG, "a") as logf:
+            subprocess.Popen(
+                [sys.executable, "-m", "nyx"],
+                cwd=REPO,
+                env=env,
+                stdout=logf,
+                stderr=logf,
+                stdin=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        print("nyx: ON")
+    _write_autostart()
+
+
+def stop() -> None:
+    if daemon_running():
+        send({"op": "quit"})
+    if os.path.exists(AUTOSTART):
+        os.remove(AUTOSTART)
+    print("nyx: OFF")
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    cmd = args[0] if args else "status"
+    if cmd in ("on", "start"):
+        start()
+    elif cmd in ("off", "stop"):
+        stop()
+    elif cmd == "toggle":
+        stop() if daemon_running() else start()
+    elif cmd == "status":
+        print("running" if daemon_running() else "stopped")
+    elif cmd == "say":
+        ok = send({"op": "say", "text": " ".join(args[1:])})
+        print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "ping":
+        print(send({"op": "ping"}))
+    else:
+        print("uso: nyx-ctl on|off|toggle|status|say <texto>|ping", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

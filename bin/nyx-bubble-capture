@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+"""nyx-bubble-capture — hook `Stop` de Claude Code.
+
+Lee el JSON del hook por stdin, saca `transcript_path`, extrae la última frase
+del asistente y la manda al daemon de Nyx como bocadillo. Si el daemon no corre,
+no hace nada (silencioso). Pensado para `~/dotfiles/.claude/settings.json`.
+"""
+
+import json
+import os
+import sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+sys.path.insert(0, REPO)
+
+from nyx.client import send  # noqa: E402
+from nyx.transcript import last_assistant_text  # noqa: E402
+
+MAX = 280
+
+
+def main() -> None:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return
+    path = (payload or {}).get("transcript_path")
+    if not path:
+        return
+    text = last_assistant_text(path)
+    if not text:
+        return
+    snippet = text.strip()
+    if len(snippet) > MAX:
+        snippet = snippet[: MAX - 1].rstrip() + "…"
+    send({"op": "say", "text": snippet})
+
+
+if __name__ == "__main__":
+    main()
