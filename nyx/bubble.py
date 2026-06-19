@@ -29,6 +29,13 @@ class Bubble:
 
         self.spark = Gtk.Label(label=sparkle.FRAMES[0])
         self.spark.add_css_class("nyx-spark")
+        # Caja de tamaño FIJO + glifo centrado: los frames del sparkle (· ✢ ✳ ✶ ✻ ✽)
+        # tienen anchos/altos distintos; sin reservar tamaño constante, el bocadillo
+        # se redimensiona en cada frame (tiembla). Con size_request fijo, la huella
+        # del sparkle no cambia y el bocadillo queda estable.
+        self.spark.set_size_request(30, 30)
+        self.spark.set_xalign(0.5)
+        self.spark.set_yalign(0.0)
         self.spark.set_valign(Gtk.Align.START)
         self.text = Gtk.Label()
         self.text.add_css_class("nyx-text")
