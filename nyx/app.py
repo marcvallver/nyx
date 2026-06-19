@@ -21,6 +21,7 @@ from .client import socket_path  # noqa: E402
 from .confirm import ConfirmPopup  # noqa: E402
 from .inputbar import InputBar  # noqa: E402
 from .ipc import SocketServer  # noqa: E402
+from .voice import TtsSpeaker  # noqa: E402
 
 ACTIVITY_FILE = os.path.expanduser("~/.cache/claude-thinking.active")
 
@@ -38,6 +39,7 @@ class NyxApp(Gtk.Application):
         self.bubble = Bubble(self)
         self.inputbar = InputBar(self, self.send_turn, self._dismiss_input)
         self.confirm_popup = ConfirmPopup(self)
+        self.tts = TtsSpeaker()
         self.backend = ClaudeBackend(self._on_signal)
         self.server = SocketServer(socket_path(), self.handle)
         self.activity = ActivityWatcher(ACTIVITY_FILE, self._on_terminal_activity)
@@ -55,7 +57,12 @@ class NyxApp(Gtk.Application):
             ttl = int(msg.get("ttl_ms") or 12000)
             if text:
                 GLib.idle_add(self.bubble.show_text, text, ttl)
+                self.tts.feed(text)  # cola thread-safe; habla si está activado
+                self.tts.flush()
             reply({"ok": True})
+        elif op == "tts":
+            self.tts.set_enabled(bool(msg.get("on")))
+            reply({"ok": True, "tts": self.tts.enabled})
         elif op == "summon":
             GLib.idle_add(self._summon)
             reply({"ok": True})
@@ -129,6 +136,7 @@ class NyxApp(Gtk.Application):
             self.bubble.show_text("Espera, aún estoy con lo anterior…", 4000)
             return False
         self._listening = False
+        self.tts.stop()  # corta cualquier voz anterior antes del nuevo turno
         self._set_nyx("thinking")
         self.bubble.start_stream()
         self.backend.ask(text)
@@ -138,14 +146,17 @@ class NyxApp(Gtk.Application):
         if isinstance(sig, streamparse.TextDelta):
             self._set_nyx("talking")
             self.bubble.append(sig.text)
+            self.tts.feed(sig.text)  # habla frase a frase (si TTS activado)
         elif isinstance(sig, streamparse.AssistantMessage):
             self._set_nyx("talking")
             if not self.bubble._buf.strip():  # fallback si no llegaron deltas
                 self.bubble.append(sig.text)
+                self.tts.feed(sig.text)
         elif isinstance(sig, streamparse.Result):
             if sig.is_error and not self.bubble._buf.strip():
                 self.bubble.append(sig.text or "(error)")
             self.bubble.finalize()
+            self.tts.flush()  # habla lo que quede del turno
             self._set_nyx("idle")
 
 

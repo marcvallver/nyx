@@ -92,11 +92,15 @@ def main() -> int:
     elif cmd == "ask":
         ok = send({"op": "ask", "text": " ".join(args[1:])})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "tts":
+        on = bool(args[1:]) and args[1].lower() in ("on", "1", "true", "si", "sí")
+        ok = send({"op": "tts", "on": on})
+        print(("voz ON" if on else "voz OFF") if ok else "daemon no responde (¿nyx-ctl on?)")
     elif cmd == "ping":
         print(send({"op": "ping"}))
     else:
         print(
-            "uso: nyx-ctl on|off|toggle|status|summon|ask <texto>|say <texto>|ping",
+            "uso: nyx-ctl on|off|toggle|status|summon|ask <texto>|say <texto>|tts on|off|ping",
             file=sys.stderr,
         )
         return 1
