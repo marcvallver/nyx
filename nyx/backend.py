@@ -95,10 +95,13 @@ class ClaudeBackend:
         self.busy = True
         self._parser = streamparse.StreamParser()
         try:
-            proc = Gio.Subprocess.new(
-                self._argv(prompt),
-                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
+            # SubprocessLauncher para quitar TERM_PROGRAM: así el hook global de
+            # sonido (condicionado a TERM_PROGRAM=ghostty) NO suena en los turnos de Nyx.
+            launcher = Gio.SubprocessLauncher.new(
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
             )
+            launcher.unsetenv("TERM_PROGRAM")
+            proc = launcher.spawnv(self._argv(prompt))
         except GLib.Error as e:
             self.busy = False
             self.on_signal(
