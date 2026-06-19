@@ -41,6 +41,7 @@ STATES = {
     "talking":   {"scale": 1.00, "alpha": 1.00, "glitch": 0.085, "glyph": 1.0},
 }
 IDLE_GLYPH = "✳"
+BRACKET_PERIOD = 4.4  # ciclo lento del alargar/achicar de los corner-brackets
 
 
 class Orb:
@@ -189,7 +190,10 @@ class Orb:
         cr.close_path()
 
     def _brackets(self, cr, x, y, ps, a):
-        n = ps * 0.24  # longitud del corner-bracket
+        # longitud animada: se alarga/achica con coseno (ease-in-out suave), igual que las cajas
+        t = self.frame * self.FPS_MS / 1000.0
+        osc = 0.5 - 0.5 * math.cos(2 * math.pi * t / BRACKET_PERIOD)
+        n = ps * (0.16 + 0.12 * osc)
         cr.set_source_rgba(*TEAL, 0.95 * a)
         cr.set_line_width(2.0)
         for cx, cy, sx, sy in ((x, y, 1, 1), (x + ps, y, -1, 1),

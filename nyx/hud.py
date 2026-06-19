@@ -17,7 +17,7 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 TEAL = (0.333, 0.918, 0.831)
 FPS_MS = 33          # animación de los brackets (~30 fps; basta para un pulso lento)
-PERIOD_S = 2.6       # ciclo del alargar/achicar
+PERIOD_S = 4.4       # ciclo del alargar/achicar (lento, tipo idle)
 
 
 def _rrect(cr, x, y, w, h, r):
