@@ -220,14 +220,20 @@ class Orb:
             PangoCairo.show_layout(cr, layout)
 
     def _glow(self, cr, w, h):
-        r = (self.MAXP * self.s_scale) * 0.85
+        # glow CONTENIDO dentro del panel (clip a la caja) — sin halo circular por fuera
+        ps = self.MAXP * self.s_scale
+        x, y = (w - ps) / 2, (h - ps) / 2
+        cr.save()
+        self._rrect(cr, x, y, ps, ps, 7 * self.s_scale)
+        cr.clip()
         cx, cy = w / 2, h / 2
-        g = cairo.RadialGradient(cx, cy, r * 0.3, cx, cy, r)
-        g.add_color_stop_rgba(0, *TEAL, 0.18 * self.s_alpha)
+        r = ps * 0.62
+        g = cairo.RadialGradient(cx, cy, r * 0.2, cx, cy, r)
+        g.add_color_stop_rgba(0, *TEAL, 0.16 * self.s_alpha)
         g.add_color_stop_rgba(1, *TEAL, 0.0)
         cr.set_source(g)
-        cr.arc(cx, cy, r, 0, 2 * math.pi)
-        cr.fill()
+        cr.paint()
+        cr.restore()
 
     def _slice_paint(self, cr, surf, w, h):
         n = random.randint(2, 4)

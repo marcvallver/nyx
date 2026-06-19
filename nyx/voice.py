@@ -21,6 +21,8 @@ import sys
 import threading
 import urllib.request
 
+from . import markup
+
 VOICES_DIR = os.path.expanduser("~/.local/share/nyx/voices")
 DEFAULT_VOICE = os.path.join(VOICES_DIR, "es_ES-davefx-medium.onnx")
 CONFIG_PATH = os.path.expanduser("~/.config/nyx/config.json")
@@ -70,12 +72,33 @@ def _resolve_voice(voice: str) -> str:
 
 # parte texto en frases completas (mantiene el resto para el siguiente chunk)
 _SENT = re.compile(r".*?[.!?…\n]+", re.DOTALL)
-# limpia markdown ligero para que no lea "asterisco asterisco"
-_MD = re.compile(r"[*_`#>]+")
+# emojis y símbolos que NO se deben LEER en voz (sí se ven en el bocadillo)
+_EMOJI = re.compile(
+    "["
+    "\U0001f000-\U0001faff"  # emoji / pictogramas / transporte / banderas
+    "\U00002600-\U000027bf"  # símbolos misc + dingbats (✶ ✻ ✅ ✨)
+    "\U00002190-\U000021ff"  # flechas (→ ←)
+    "\U00002b00-\U00002bff"  # símbolos y flechas misc (⭐ ⬛)
+    "\U00002500-\U000025ff"  # box-drawing + bloques + formas (─ │ ● ■)
+    "\U0000fe00-\U0000fe0f"  # selectores de variación
+    "•‣⁃‍"  # viñetas (•) + ZWJ
+    "]+"
+)
+_WS = re.compile(r"[ \t]{2,}")
+# respelling SOLO para la voz: que el TTS pronuncie nombres bien (el bocadillo muestra el original).
+# "Nyx" → "Niks" para que Ximena lo diga /niks/ (≈ IPA /nˈɪks/; el español no tiene ɪ).
+_PRONUN = [(re.compile(r"\bNyx\b", re.IGNORECASE), "Niks")]
 
 
 def _strip_md(text: str) -> str:
-    return _MD.sub("", text).strip()
+    """Texto para VOZ: quita la estructura markdown (vía `markup.to_plain`) y los emojis/símbolos
+    (se leen raro), conserva la puntuación, y aplica respelling de pronunciación. El bocadillo
+    SÍ muestra todo (con 'Nyx' y emojis)."""
+    s = markup.to_plain(text)
+    s = _EMOJI.sub("", s)
+    for pat, rep in _PRONUN:
+        s = pat.sub(rep, s)
+    return _WS.sub(" ", s).strip()
 
 
 def split_sentences(buf: str) -> tuple[list[str], str]:

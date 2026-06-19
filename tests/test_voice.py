@@ -34,10 +34,31 @@ def test_split_ellipsis_and_exclaim():
 
 
 def test_strip_markdown_for_speech():
-    assert _strip_md("soy **Nyx**") == "soy Nyx"
+    assert _strip_md("soy **fuerte**") == "soy fuerte"
     assert _strip_md("usa `ls -la`") == "usa ls -la"
     assert _strip_md("# Título") == "Título"
     assert _strip_md("_énfasis_ y *cursiva*") == "énfasis y cursiva"
+
+
+def test_strip_emojis_and_symbols_for_speech():
+    # los emojis/símbolos NO se leen, pero la puntuación normal SÍ se conserva
+    assert _strip_md("Hecho 🌙 listo 🎉") == "Hecho listo"
+    assert _strip_md("✅ vale ⭐") == "vale"
+    assert _strip_md("flecha → y viñeta • fin") == "flecha y viñeta fin"
+    assert _strip_md("¿Qué tal, Marc? ¡Genial!") == "¿Qué tal, Marc? ¡Genial!"  # puntuación intacta
+    assert _strip_md("espera… y más") == "espera… y más"  # elipsis (terminador) intacto
+
+
+def test_strip_links_and_lists_for_speech():
+    assert _strip_md("mira [esto](http://x)") == "mira esto"
+    assert _strip_md("- punto uno") == "punto uno"
+
+
+def test_pronunciation_respelling_nyx():
+    # la voz dice "Niks" (≈ /nɪks/); el bocadillo mantiene "Nyx" (esto es solo para TTS)
+    assert _strip_md("Hola, soy **Nyx**.") == "Hola, soy Niks."
+    assert _strip_md("nyx en minúsculas") == "Niks en minúsculas"
+    assert _strip_md("Onyx no se toca") == "Onyx no se toca"  # \b evita falsos positivos
 
 
 def test_group_chunks_short_response_waits_for_flush():
