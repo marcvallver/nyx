@@ -46,7 +46,7 @@ IDLE_GLYPH = "✳"
 class Orb:
     SIZE = 108
     MAXP = 80  # lado máximo del panel (deja margen para glitch/glow)
-    FPS_MS = 33
+    FPS_MS = 16  # ~60 fps
 
     def __init__(self, app):
         w = Gtk.ApplicationWindow(application=app)
@@ -130,12 +130,9 @@ class Orb:
         return True
 
     def _glyph(self) -> str:
-        if self.state == "thinking":
-            idx = (self.frame * self.FPS_MS // sparkle.FRAME_MS) % len(sparkle.FRAMES)
-            return sparkle.FRAMES[idx]
-        if self.state in ("talking", "listening"):
-            return sparkle.PEAK
-        return IDLE_GLYPH
+        # sparkle SIEMPRE animado (cadencia real 120 ms), en todos los estados
+        idx = (self.frame * self.FPS_MS // sparkle.FRAME_MS) % len(sparkle.FRAMES)
+        return sparkle.FRAMES[idx]
 
     # --- composición ---
     def _draw(self, _area, cr, width, height):
