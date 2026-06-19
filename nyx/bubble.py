@@ -15,7 +15,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk, Gtk4LayerShell as LS  # noqa: E402
 
-from . import markup, theme  # noqa: E402
+from . import hud, markup, theme  # noqa: E402
 
 
 class Bubble:
@@ -48,7 +48,7 @@ class Bubble:
         self.revealer = Gtk.Revealer()
         self.revealer.set_transition_type(Gtk.RevealerTransitionType.CROSSFADE)
         self.revealer.set_transition_duration(180)
-        self.revealer.set_child(box)
+        self.revealer.set_child(hud.hud_panel(box))
         w.set_child(self.revealer)
         w.connect("realize", self._clickthrough)
 

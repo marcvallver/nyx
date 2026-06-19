@@ -14,7 +14,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Gdk, Gtk, Gtk4LayerShell as LS  # noqa: E402
 
-from . import theme  # noqa: E402
+from . import hud, theme  # noqa: E402
 
 
 class InputBar:
@@ -43,7 +43,7 @@ class InputBar:
         self.entry.connect("activate", self._submit)
         box.append(glyph)
         box.append(self.entry)
-        w.set_child(box)
+        w.set_child(hud.hud_panel(box))
 
         key = Gtk.EventControllerKey()
         key.connect("key-pressed", self._on_key)

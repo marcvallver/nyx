@@ -12,9 +12,8 @@ BUBBLE_CSS = f"""
 window {{ background: transparent; }}
 .nyx-box {{
   background: {MIDNIGHT};
-  border: 1px solid rgba({GLOW_RGB}, 0.5);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 9px;
+  padding: 13px 17px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.40), 0 0 14px rgba({GLOW_RGB}, 0.16);
 }}
 .nyx-spark {{
@@ -35,9 +34,9 @@ INPUT_CSS = f"""
 window {{ background: transparent; }}
 .nyx-input-box {{
   background: {MIDNIGHT};
-  border: 1px solid {TEAL};
-  border-radius: 12px;
-  padding: 8px 12px;
+  border-radius: 9px;
+  padding: 10px 16px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.40), 0 0 14px rgba({GLOW_RGB}, 0.16);
 }}
 .nyx-input-glyph {{ font-size: 20px; }}
 .nyx-input-entry, .nyx-input-entry > text {{
