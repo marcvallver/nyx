@@ -1,0 +1,13 @@
+{
+  "tts_enabled": true,
+  "tts_backend": "edge",
+  "edge_voice": "es-ES-XimenaNeural",
+  "tts_sink": "",
+  "stt_source": "",
+  "stt_model": "small",
+  "voice": "es_ES-davefx-medium",
+  "tts_speaker": "",
+  "gemini_tts_model": "gemini-2.5-flash-preview-tts",
+  "gemini_voice": "Kore",
+  "gemini_style": "Habla en español de España, con voz cálida, cercana y natural"
+}

@@ -97,15 +97,25 @@ def main() -> None:
     import webrtcvad
     from faster_whisper import WhisperModel
 
-    model = WhisperModel(MODEL, device="cpu", compute_type="int8")
-    vad = webrtcvad.Vad(2)
+    try:
+        model = WhisperModel(MODEL, device="cpu", compute_type="int8")
+        vad = webrtcvad.Vad(2)
+    except Exception as e:  # modelo no descargable/corrupto → morir AVISANDO (no READY mudo)
+        sys.stderr.write(f"FATAL carga del modelo '{MODEL}': {e}\n")
+        sys.stderr.flush()
+        return
     threading.Thread(target=_stdin_loop, daemon=True).start()
     print("READY", flush=True)
     while True:
         _start.wait()
         _start.clear()
         _stop.clear()
-        text = record_and_transcribe(model, vad)
+        try:
+            text = record_and_transcribe(model, vad)
+        except Exception as e:  # un turno fallido NO debe matar el worker
+            sys.stderr.write(f"error en transcripción: {e}\n")
+            sys.stderr.flush()
+            text = ""
         print("TEXT:" + text, flush=True)
 
 

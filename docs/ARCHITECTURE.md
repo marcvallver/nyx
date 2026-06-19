@@ -89,9 +89,21 @@ Los verbos se diseñan finos para envolverlos luego en D-Bus `org.marc.Nyx1`.
   daemon) lo controla por stdin y, al recibir texto, lo reinyecta por `app.send_turn` (mismo flujo que
   la barra → orbe `thinking`). Op socket `listen` (toggle) + atajo KDE. **Lean: webrtcvad + numpy, sin
   torch ni CUDA** (silero-vad arrastraba torch+CUDA → descartado).
-- **TTS (hablar, frase a frase):** `TtsSpeaker` (hilo worker, cola). En `_on_signal` el streaming de
-  Claude se trocea por frases (`split_sentences`, pura/testeada) y cada frase se habla en cuanto se
-  cierra (efecto Siri). Backend **Piper** (`piper --output_raw | aplay`) con fallback a **espeak-ng**;
-  markdown se limpia para el habla (`_strip_md`). Toggle de salida vía op `tts`.
-- **Premium opcional (futuro):** backend TTS **Gemini** (endpoint dedicado, voz HD española) seleccionable
-  por config, con Piper de fallback; el STT se queda **siempre local** por privacidad.
+- **TTS (hablar) — pipeline síntesis ‖ reproducción (prefetch):** `TtsSpeaker` corre **dos hilos**:
+  un *productor* sintetiza el siguiente trozo **mientras** suena el actual, y un *consumidor* reproduce
+  el PCM ya listo en orden → **sin huecos entre frases**. En `_on_signal`, el streaming de Claude se
+  agrupa en **chunks grandes** (`group_chunks`, pura/testeada): una respuesta breve sale **entera en
+  una sola síntesis** (prosodia natural, menos llamadas); las largas se cortan por párrafo o ~280 chars.
+  Cada clip lleva un colchón de silencio (`_pad`) para que `pw-play` no corte la última sílaba. Markdown
+  se limpia para el habla (`_strip_md`). Un contador de generación (`stop()` lo incrementa) descarta el
+  trabajo en vuelo al cortar (toggle/turno nuevo/barge-in). Toggle de salida vía op `tts`.
+- **Backends TTS pluggables (`tts_backend` en config), con fallback en cascada** edge → Piper → espeak:
+  - **`edge` (por defecto):** [`edge-tts`](https://github.com/rany2/edge-tts) — voces neuronales de
+    Microsoft Edge, **gratis, sin key ni cuota**; voz es-ES `Ximena`/`Elvira`. Da mp3 → se decodifica a
+    PCM s16le 24 kHz con **ffmpeg** (corre en el venv, vía subprocess; el daemon no importa edge_tts).
+  - **`gemini` (opt-in, HD):** REST a `generateContent` (modalidad AUDIO, voz `Kore`), con urllib y la
+    API key en `~/.config/nyx/gemini.key` (**fuera de git**). Cae a local sin red/cuota.
+  - **`piper` / espeak:** local sin red (red de seguridad).
+- **Enrutado de audio por config:** `tts_sink` y `stt_source` (el `node.name` de PipeWire) fijan
+  salida/micro de Nyx **sin tocar el default del sistema** (`pw-play --target` / `pw-record --target`).
+  El **STT se queda siempre local** por privacidad; la nube solo se usa, opt-in, para la *boca*.

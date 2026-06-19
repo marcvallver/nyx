@@ -84,10 +84,23 @@ class NyxApp(Gtk.Application):
         elif op == "confirm":
             GLib.idle_add(self._confirm, msg, reply)  # diferido: reply tras decidir
         elif op == "quit":
-            GLib.idle_add(self.quit)
+            GLib.idle_add(self._quit_clean)
             reply({"ok": True, "quitting": True})
         else:
             reply({"ok": False, "error": f"unknown op: {op!r}"})
+
+    def _quit_clean(self) -> bool:
+        """Cierre ordenado: termina el worker STT y corta la voz antes de salir."""
+        try:
+            self.stt.close()
+        except Exception:
+            pass
+        try:
+            self.tts.stop()
+        except Exception:
+            pass
+        self.quit()
+        return False
 
     def _confirm(self, msg: dict, reply) -> bool:
         tool = msg.get("tool", "")
@@ -144,6 +157,8 @@ class NyxApp(Gtk.Application):
             return False
         if self.stt.recording:
             self.stt.stop()  # transcribe; el texto llega async a _on_stt_text
+        elif not self.stt.ready:  # worker arrancado pero el modelo aún carga → no fingir escucha
+            self.bubble.show_text("Cargando el modelo de voz… prueba en unos segundos.", 3000)
         else:
             self.stt.start()
             self._listening = True
@@ -163,7 +178,8 @@ class NyxApp(Gtk.Application):
         if text.strip():
             self.send_turn(text)  # mismo flujo que la barra/ask → orbe 'thinking'
         else:
-            self._refresh_orb()  # nada dicho → vuelve a idle
+            self.bubble.show_text("No te he oído (revisa el micro / stt_source).", 3000)
+            self._refresh_orb()  # nada captado → vuelve a idle, pero avisando
         return False
 
     # --- chat ---

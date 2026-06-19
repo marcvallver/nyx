@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 # La GUI usa PyGObject + GTK4 + gtk4-layer-shell del SISTEMA (no instalables por pip).
-# No van como dependencias de pip; install.sh verifica los paquetes del sistema.
+# No van como dependencias de pip; el README documenta los paquetes del sistema (pacman).
 # La lógica pura (streamparse, policy) no importa GTK y es testeable en CI.
 
 [project.optional-dependencies]

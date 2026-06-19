@@ -19,8 +19,9 @@ una ventanita HUD con glitch que **reacciona**, **chat por atajo** con respuesta
 - **Chat (Meta+C):** barra de entrada con foco → tu pregunta → respuesta de Claude **en streaming**, con
   efecto **máquina de escribir** y **markdown** renderizado en el bocadillo. Continuidad de conversación.
 - **Voz (estilo Siri):** **push-to-talk** (Meta+A) → STT local (faster-whisper, español) con **auto-stop**
-  por VAD (callas → corta sola) → Claude → **TTS** (Piper, voz española; o espeak de fallback), frase a
-  frase para empezar a hablar antes de terminar de pensar. Salida de voz con **toggle**.
+  por VAD (callas → corta sola) → Claude → **TTS neuronal** (voz **es-ES** vía `edge-tts`, gratis y sin
+  key; con Piper/espeak de fallback y **Gemini HD** opcional), sintetizado por **chunks con prefetch**
+  para hablar fluido y sin huecos. Salida de voz con **toggle**.
 - **Acciones con confirmación (híbrido seguro):** Nyx puede *ejecutar* cosas (abrir apps, comandos),
   pero un **gate de permisos** auto-permite lo seguro (lecturas, abrir apps), **deniega** lo peligroso
   (`rm -rf`, `sudo`, BD…) y para el resto abre un **popup de confirmación**.
@@ -38,33 +39,32 @@ Un único **daemon** GTK4 (`nyx`) que posee todas las superficies y un subproces
 ```
 
 - **STT** corre en un **venv** aparte (faster-whisper, modelo caliente) controlado por el daemon vía
-  un worker por stdin → el texto entra por el mismo `send_turn` que la barra. **TTS** = subprocess
-  (Piper `--output_raw | aplay`). El gate de permisos es un hook **`PreToolUse`** en un `--settings`
-  dedicado. Detalle completo en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+  un worker por stdin → el texto entra por el mismo `send_turn` que la barra. **TTS**: pipeline
+  **síntesis ‖ reproducción (prefetch)** con backend pluggable — `edge-tts` (por defecto, gratis) /
+  Gemini HD / Piper — enrutado al sink configurado vía `pw-play`. El gate de permisos es un hook
+  **`PreToolUse`** en un `--settings` dedicado. Detalle completo en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 📦 Instalación (KDE Plasma 6 / Arch)
 
 ```bash
-# Sistema (repos oficiales): GTK4 + layer-shell + PyGObject (suelen estar), audio y g2p
-sudo pacman -S --needed gtk4 gtk4-layer-shell python-gobject espeak-ng alsa-utils pipewire
+# Sistema (repos oficiales): GTK4 + layer-shell + PyGObject (suelen estar), audio + ffmpeg
+sudo pacman -S --needed gtk4 gtk4-layer-shell python-gobject ffmpeg espeak-ng alsa-utils pipewire
 
-# TTS neuronal (AUR, binario): voz Piper
-paru -S piper-tts-bin
-# Voz española:
-mkdir -p ~/.local/share/nyx/voices && cd ~/.local/share/nyx/voices
-curl -fLO https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx
-curl -fLO https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx.json
-
-# STT local (venv de usuario, sin tocar el sistema): faster-whisper + VAD
+# Voz (venv de usuario, sin tocar el sistema, SIN torch/CUDA): STT local + TTS neuronal gratis
 python -m venv ~/.local/share/nyx/venv-voice
-~/.local/share/nyx/venv-voice/bin/pip install faster-whisper webrtcvad-wheels
+~/.local/share/nyx/venv-voice/bin/pip install faster-whisper webrtcvad-wheels numpy edge-tts
+#   · TTS por defecto: edge-tts → voces neuronales de MS Edge, GRATIS y sin key (voz es-ES "Ximena")
+#   · STT: faster-whisper (español) con auto-stop por VAD
+
+# (Opcional) Piper como fallback de TTS sin red:
+#   paru -S piper-tts-bin   +   una voz .onnx (+ .json) en ~/.local/share/nyx/voices/
 
 # Lanzar (autoarranca al login)
 nyx-ctl on
 ```
 
 > El daemon necesita `LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so` (lo pone `nyx-ctl`). El backend usa
-> tu `claude` (Claude Code) del PATH. **Cero torch, cero CUDA** (~700–900 MB con modelos incluidos).
+> tu `claude` (Claude Code) del PATH. **Cero torch, cero CUDA** (~450 MB de venv con el modelo STT).
 
 ## ⌨️ Uso
 
@@ -75,6 +75,7 @@ nyx-ctl listen                   # push-to-talk: pulsa→habla→corta sola (át
 nyx-ctl tts on|off               # voz de salida (que Nyx hable)
 nyx-ctl ask "<texto>"            # turno por CLI (sin barra)
 nyx-ctl say "<texto>"            # bocadillo (y voz si tts on)
+nyx-ctl listen_stop | hide | ping  # cortar escucha · ocultar barra · diagnóstico
 ```
 
 Atajos sugeridos (System Settings → Atajos → *Orden o script*): **Meta+C** → `nyx-ctl summon`,
@@ -82,6 +83,11 @@ Atajos sugeridos (System Settings → Atajos → *Orden o script*): **Meta+C** �
 
 ## 🔧 Configuración
 
+- `~/.config/nyx/config.json` — voz y audio (ver [`config.example.json`](config.example.json)):
+  `tts_backend` (`edge`/`gemini`/`piper`), `edge_voice` (p.ej. `es-ES-XimenaNeural` o `es-ES-ElviraNeural`),
+  `tts_sink` y `stt_source` (el `node.name` de PipeWire para fijar salida/micro), `tts_enabled`,
+  `stt_model`. **Gemini HD es opt-in**: `tts_backend: "gemini"` + la API key en `~/.config/nyx/gemini.key`
+  (fuera de git). Lista de voces edge: `edge-tts --list-voices | grep es-`.
 - `~/dotfiles/.claude/nyx/` (personal): `settings.json` (perfil de permisos + hook del gate) y
   `persona.md` (personalidad), symlinkeados a `~/.config/nyx/`.
 - El **avatar sprite** (alternativa al orbe) y los sonidos son adapters de material que aportas tú;
@@ -100,8 +106,9 @@ extractor de transcript) se prueba en CI **sin GTK ni audio**. La GUI/voz se val
 ## 🗺️ Estado
 
 Funcionando: avatar glitch, chat con streaming + tecleo, persona, gate de permisos con confirmación,
-notificaciones, y **voz** (STT push-to-talk con auto-stop + TTS frase a frase). Pendiente/opt-in:
-*barge-in* (interrumpir a Nyx hablando), **TTS HD por Gemini** (cloud, opcional), wake-word "Hey Nyx".
+notificaciones, y **voz** — TTS neuronal **es-ES gratis** (`edge-tts`, voz Ximena) con pipeline de
+**prefetch** (fluido, sin huecos) y fallback Piper/espeak, más STT push-to-talk con auto-stop por VAD.
+Opt-in: **TTS HD por Gemini** (cloud), *barge-in* (interrumpir a Nyx hablando), wake-word "Hey Nyx".
 
 ## Licencia
 
