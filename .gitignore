@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Runtime / local
+*.log
+*.swp
+
+# Material con copyright — NUNCA en el repo público.
+# Las hojas de sprites (Pokémon/KH/Fantasy) y sonidos las aporta el usuario
+# y viven fuera del repo (p.ej. ~/dotfiles/wpets/sprites, ~/.config/nyx/).
+assets/sprites/
+assets/sounds/

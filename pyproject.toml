@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nyx-assistant"
+version = "0.0.1"
+description = "Asistente de escritorio cyberpunk para Claude (overlay GTK4 layer-shell, estilo Siri) en KDE Plasma Wayland"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Marc Vallverdú" }]
+keywords = ["claude", "assistant", "wayland", "layer-shell", "kde", "gtk4", "cyberpunk"]
+classifiers = [
+  "Environment :: X11 Applications :: Qt",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Topic :: Desktop Environment",
+]
+
+# La GUI usa PyGObject + GTK4 + gtk4-layer-shell del SISTEMA (no instalables por pip).
+# No van como dependencias de pip; install.sh verifica los paquetes del sistema.
+# La lógica pura (streamparse, policy) no importa GTK y es testeable en CI.
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/marcvallver/nyx"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nyx"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
