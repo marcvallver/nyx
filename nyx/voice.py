@@ -130,3 +130,76 @@ class TtsSpeaker:
         finally:
             with self._lock:
                 self._proc = None
+
+
+# --- STT (escuchar): worker persistente en el venv, controlado por stdin ---
+VENV_PY = os.path.expanduser("~/.local/share/nyx/venv-voice/bin/python")
+STT_WORKER = os.path.join(os.path.dirname(os.path.realpath(__file__)), "stt_worker.py")
+STT_SOURCE = ""  # target PipeWire del micro (vacío = fuente por defecto de PipeWire)
+
+
+class SttListener:
+    """Push-to-talk: arranca/para la grabación y transcribe. El modelo vive caliente en
+    un worker del venv (faster-whisper); el daemon lo controla por stdin y lee el texto.
+    `on_text(text)` se llama desde un hilo → el app debe marshalear con GLib.idle_add."""
+
+    def __init__(self, on_text):
+        self.on_text = on_text
+        self.recording = False
+        self.ready = False
+        self._proc: subprocess.Popen | None = None
+        if os.path.exists(VENV_PY) and os.path.exists(STT_WORKER):
+            self._start_worker()
+
+    def available(self) -> bool:
+        return self._proc is not None
+
+    def _start_worker(self):
+        env = os.environ.copy()
+        env["NYX_STT_SOURCE"] = STT_SOURCE
+        try:
+            self._proc = subprocess.Popen(
+                [VENV_PY, STT_WORKER],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, env=env, text=True, bufsize=1,
+            )
+        except OSError:
+            self._proc = None
+            return
+        threading.Thread(target=self._reader, daemon=True).start()
+
+    def _reader(self):
+        if not self._proc or not self._proc.stdout:
+            return
+        for line in self._proc.stdout:
+            line = line.rstrip("\n")
+            if line == "READY":
+                self.ready = True
+            elif line.startswith("TEXT:"):
+                self.recording = False
+                self.on_text(line[5:].strip())  # vacío incluido (el app decide)
+
+    def toggle(self) -> bool:
+        if self.recording:
+            self.stop()
+        else:
+            self.start()
+        return self.recording
+
+    def start(self):
+        if self.recording or not self._proc or not self.ready:
+            return
+        self.recording = True
+        self._send("start")
+
+    def stop(self):
+        if not self.recording:
+            return
+        self._send("stop")  # recording baja al recibir TEXT
+
+    def _send(self, cmd: str):
+        try:
+            self._proc.stdin.write(cmd + "\n")
+            self._proc.stdin.flush()
+        except (OSError, ValueError, AttributeError):
+            pass

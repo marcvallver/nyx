@@ -21,7 +21,7 @@ from .client import socket_path  # noqa: E402
 from .confirm import ConfirmPopup  # noqa: E402
 from .inputbar import InputBar  # noqa: E402
 from .ipc import SocketServer  # noqa: E402
-from .voice import TtsSpeaker  # noqa: E402
+from .voice import SttListener, TtsSpeaker  # noqa: E402
 
 ACTIVITY_FILE = os.path.expanduser("~/.cache/claude-thinking.active")
 
@@ -40,6 +40,7 @@ class NyxApp(Gtk.Application):
         self.inputbar = InputBar(self, self.send_turn, self._dismiss_input)
         self.confirm_popup = ConfirmPopup(self)
         self.tts = TtsSpeaker()
+        self.stt = SttListener(self._on_stt_text)
         self.backend = ClaudeBackend(self._on_signal)
         self.server = SocketServer(socket_path(), self.handle)
         self.activity = ActivityWatcher(ACTIVITY_FILE, self._on_terminal_activity)
@@ -63,6 +64,12 @@ class NyxApp(Gtk.Application):
         elif op == "tts":
             self.tts.set_enabled(bool(msg.get("on")))
             reply({"ok": True, "tts": self.tts.enabled})
+        elif op == "listen":
+            GLib.idle_add(self._listen_toggle)
+            reply({"ok": True})
+        elif op == "listen_stop":
+            GLib.idle_add(self._listen_stop)
+            reply({"ok": True})
         elif op == "summon":
             GLib.idle_add(self._summon)
             reply({"ok": True})
@@ -129,6 +136,35 @@ class NyxApp(Gtk.Application):
     def _dismiss_input(self) -> None:
         self._listening = False
         self._refresh_orb()
+
+    # --- voz (push-to-talk) ---
+    def _listen_toggle(self) -> bool:
+        if not self.stt.available():
+            self.bubble.show_text("Voz no disponible (falta el venv-voice / faster-whisper).", 4000)
+            return False
+        if self.stt.recording:
+            self.stt.stop()  # transcribe; el texto llega async a _on_stt_text
+        else:
+            self.stt.start()
+            self._listening = True
+            self._refresh_orb()  # orbe en 'listening'
+        return False
+
+    def _listen_stop(self) -> bool:
+        if self.stt.recording:
+            self.stt.stop()
+        return False
+
+    def _on_stt_text(self, text: str) -> None:
+        GLib.idle_add(self._handle_stt, text)  # llega desde un hilo → marshalear
+
+    def _handle_stt(self, text: str) -> bool:
+        self._listening = False
+        if text.strip():
+            self.send_turn(text)  # mismo flujo que la barra/ask → orbe 'thinking'
+        else:
+            self._refresh_orb()  # nada dicho → vuelve a idle
+        return False
 
     # --- chat ---
     def send_turn(self, text: str) -> bool:
