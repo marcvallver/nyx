@@ -30,6 +30,28 @@ window {{ background: transparent; }}
 """
 
 
+INPUT_CSS = f"""
+window {{ background: transparent; }}
+.nyx-input-box {{
+  background: {MIDNIGHT};
+  border: 1px solid {TEAL};
+  border-radius: 12px;
+  padding: 8px 12px;
+}}
+.nyx-input-glyph {{ font-size: 20px; }}
+.nyx-input-entry, .nyx-input-entry > text {{
+  background: transparent;
+  color: {TEXT};
+  font-family: {FONT};
+  font-size: 16px;
+  border: none;
+  box-shadow: none;
+  outline: none;
+  caret-color: {TEAL};
+}}
+"""
+
+
 def apply_css(css: str) -> None:
     """Registra `css` a nivel de display (idempotente para clases namespaced nyx-*)."""
     from gi.repository import Gdk, Gtk

@@ -1,5 +1,6 @@
 """Bocadillo cyberpunk de Nyx: ventana layer-shell (esquina sup-der, click-through)
-con un sparkle animado + el texto, auto-oculta tras un TTL."""
+con un sparkle animado + el texto. Soporta streaming (start/append/finalize) y un
+atajo `show_text` para mensajes de una pieza. Auto-oculta tras un TTL."""
 
 from __future__ import annotations
 
@@ -29,10 +30,8 @@ class Bubble:
 
         self.spark = Gtk.Label(label=sparkle.FRAMES[0])
         self.spark.add_css_class("nyx-spark")
-        # Caja de tamaño FIJO + glifo centrado: los frames del sparkle (· ✢ ✳ ✶ ✻ ✽)
-        # tienen anchos/altos distintos; sin reservar tamaño constante, el bocadillo
-        # se redimensiona en cada frame (tiembla). Con size_request fijo, la huella
-        # del sparkle no cambia y el bocadillo queda estable.
+        # Caja FIJA + glifo centrado: los frames (· ✢ ✳ ✶ ✻ ✽) tienen tamaños
+        # distintos; sin huella constante, el bocadillo tiembla en cada frame.
         self.spark.set_size_request(30, 30)
         self.spark.set_xalign(0.5)
         self.spark.set_yalign(0.0)
@@ -41,7 +40,7 @@ class Bubble:
         self.text.add_css_class("nyx-text")
         self.text.set_wrap(True)
         self.text.set_xalign(0.0)
-        self.text.set_max_width_chars(42)
+        self.text.set_max_width_chars(46)
 
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         row.add_css_class("nyx-box")
@@ -52,6 +51,7 @@ class Bubble:
 
         self.win = w
         self.i = 0
+        self._buf = ""
         self._tick_id: int | None = None
         self._fade_id: int | None = None
         w.set_visible(False)
@@ -66,14 +66,35 @@ class Bubble:
         except Exception:
             pass
 
-    def show_text(self, text: str, ttl_ms: int = 12000) -> None:
-        self.text.set_text(text)
+    # --- streaming ---
+    def _show(self) -> None:
         self.win.set_visible(True)
         if self._tick_id is None:
             self._tick_id = GLib.timeout_add(sparkle.FRAME_MS, self._tick)
         if self._fade_id is not None:
             GLib.source_remove(self._fade_id)
+            self._fade_id = None
+
+    def start_stream(self) -> bool:
+        self._buf = ""
+        self.text.set_text("")
+        self._show()
+        return False  # usable como callback de GLib.idle_add
+
+    def append(self, chunk: str) -> None:
+        self._buf += chunk
+        self.text.set_text(self._buf)
+
+    def finalize(self, ttl_ms: int = 15000) -> None:
+        if self._fade_id is not None:
+            GLib.source_remove(self._fade_id)
         self._fade_id = GLib.timeout_add(ttl_ms, self._hide)
+
+    def show_text(self, text: str, ttl_ms: int = 12000) -> bool:
+        self.start_stream()
+        self.append(text)
+        self.finalize(ttl_ms)
+        return False
 
     def _tick(self) -> bool:
         self.i = (self.i + 1) % len(sparkle.FRAMES)

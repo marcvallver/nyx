@@ -83,10 +83,22 @@ def main() -> int:
     elif cmd == "say":
         ok = send({"op": "say", "text": " ".join(args[1:])})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "summon":
+        ok = send({"op": "summon"})
+        print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "hide":
+        ok = send({"op": "hide"})
+        print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "ask":
+        ok = send({"op": "ask", "text": " ".join(args[1:])})
+        print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
     elif cmd == "ping":
         print(send({"op": "ping"}))
     else:
-        print("uso: nyx-ctl on|off|toggle|status|say <texto>|ping", file=sys.stderr)
+        print(
+            "uso: nyx-ctl on|off|toggle|status|summon|ask <texto>|say <texto>|ping",
+            file=sys.stderr,
+        )
         return 1
     return 0
 
