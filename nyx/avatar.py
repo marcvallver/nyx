@@ -251,11 +251,17 @@ class Orb:
             prev = yb
 
     def _scanlines(self, cr, w, h):
+        # scanlines SOLO dentro del tile (clip al panel) → mismo tamaño que la ventana de Nyx,
+        # sin el cuadrado de rayado que antes sobresalía por el área transparente
+        ps = self.MAXP * self.s_scale
+        px, py = (w - ps) / 2, (h - ps) / 2
         cr.save()
+        self._rrect(cr, px, py, ps, ps, 7 * self.s_scale)
+        cr.clip()
         cr.set_source_rgba(0, 0, 0, 0.10)
-        y = 0
-        while y < h:
-            cr.rectangle(0, y, w, 1)
-            y += 3
+        yy = py
+        while yy < py + ps:
+            cr.rectangle(px, yy, ps, 1)
+            yy += 3
         cr.fill()
         cr.restore()
