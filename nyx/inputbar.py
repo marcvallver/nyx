@@ -18,8 +18,9 @@ from . import theme  # noqa: E402
 
 
 class InputBar:
-    def __init__(self, app, on_submit: Callable[[str], None]):
+    def __init__(self, app, on_submit: Callable[[str], None], on_dismiss: Callable[[], None] | None = None):
         self.on_submit = on_submit
+        self.on_dismiss = on_dismiss
         w = Gtk.ApplicationWindow(application=app)
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
@@ -66,9 +67,13 @@ class InputBar:
         self.win.set_visible(False)
         if text:
             self.on_submit(text)
+        elif self.on_dismiss:
+            self.on_dismiss()
 
     def _on_key(self, _ctrl, keyval, _code, _state):
         if keyval == Gdk.KEY_Escape:
             self.win.set_visible(False)
+            if self.on_dismiss:
+                self.on_dismiss()
             return True
         return False

@@ -33,9 +33,10 @@ class NyxApp(Gtk.Application):
         self.hold()
         self._terminal_active = False
         self._nyx_state = "idle"
+        self._listening = False
         self.orb = Orb(self)
         self.bubble = Bubble(self)
-        self.inputbar = InputBar(self, self.send_turn)
+        self.inputbar = InputBar(self, self.send_turn, self._dismiss_input)
         self.confirm_popup = ConfirmPopup(self)
         self.backend = ClaudeBackend(self._on_signal)
         self.server = SocketServer(socket_path(), self.handle)
@@ -56,7 +57,7 @@ class NyxApp(Gtk.Application):
                 GLib.idle_add(self.bubble.show_text, text, ttl)
             reply({"ok": True})
         elif op == "summon":
-            GLib.idle_add(self.inputbar.show)
+            GLib.idle_add(self._summon)
             reply({"ok": True})
         elif op == "hide":
             GLib.idle_add(self.inputbar.hide)
@@ -107,14 +108,27 @@ class NyxApp(Gtk.Application):
             self.orb.set_state("talking")
         elif self._nyx_state == "thinking" or self._terminal_active:
             self.orb.set_state("thinking")
+        elif self._listening:
+            self.orb.set_state("listening")
         else:
             self.orb.set_state("idle")
+
+    def _summon(self) -> bool:
+        self._listening = True
+        self._refresh_orb()
+        self.inputbar.show()
+        return False
+
+    def _dismiss_input(self) -> None:
+        self._listening = False
+        self._refresh_orb()
 
     # --- chat ---
     def send_turn(self, text: str) -> bool:
         if self.backend.busy:
             self.bubble.show_text("Espera, aún estoy con lo anterior…", 4000)
             return False
+        self._listening = False
         self._set_nyx("thinking")
         self.bubble.start_stream()
         self.backend.ask(text)

@@ -1,15 +1,20 @@
-"""Avatar de Nyx: glow Cairo + el glifo sparkle de Claude, sin anillos.
+"""Avatar de Nyx: una VENTANITA cuadrada translúcida (tile HUD cyberpunk) con el
+glifo sparkle dentro, y un EFECTO GLITCH sobre todo el conjunto.
 
-Un orbe suave (halo radial) con el glifo `· ✢ ✳ ✶ ✻ ✽` dibujado con PangoCairo
-en el centro. Pequeño y discreto en idle; CRECE al pensar/hablar. Sin círculo de
-carga. Estados idle/thinking/talking con transición suave (scale/alpha lerpeados).
-Cairo/CPU (sin GLArea, por el bug NVIDIA #4835). Solo anima cuando hace falta:
-en idle estable PARA el timer (cero consumo). Ventana layer-shell, click-through.
+Todo Cairo/CPU (sin GL). El panel (fondo midnight translúcido + borde teal + corner-
+brackets + glifo) se dibuja a una superficie offscreen y se compone con:
+  - aberración RGB sutil constante (franjas cian/magenta) — shimmer cyberpunk,
+  - ráfagas de GLITCH ocasionales (bandas horizontales desplazadas + aberración fuerte),
+  - scanlines tenues.
+Estados idle/listening/thinking/talking: idle pequeño y calmado, crece y glitchea más
+al interactuar. Respeta prefers-reduced-motion (congela, sin glitch). Ventana layer-shell,
+click-through.
 """
 
 from __future__ import annotations
 
 import math
+import random
 
 import cairo
 import gi
@@ -22,21 +27,26 @@ from gi.repository import GLib, Gtk, Pango, PangoCairo, Gtk4LayerShell as LS  # 
 
 from . import sparkle, theme  # noqa: E402
 
-TEAL = (0.333, 0.918, 0.831)  # #55EAD4
-WHITE_TEAL = (0.85, 1.0, 0.97)
+TEAL = (0.333, 0.918, 0.831)
+WHITE_TEAL = (0.92, 1.0, 0.98)
+CYAN = (0.0, 0.9, 1.0)
+MAGENTA = (1.0, 0.15, 0.6)
+PANEL_BG = (0.05, 0.08, 0.15)
 
-# objetivos por estado: scale (tamaño), glow (alpha halo), glyph (alpha glifo)
+# scale=tamaño del panel · alpha=opacidad · glitch=prob. de ráfaga/frame · glyph=alpha glifo
 STATES = {
-    "idle":     {"scale": 0.40, "glow": 0.16, "glyph": 0.6},
-    "thinking": {"scale": 0.82, "glow": 0.34, "glyph": 0.95},
-    "talking":  {"scale": 1.00, "glow": 0.42, "glyph": 1.0},
+    "idle":      {"scale": 0.60, "alpha": 0.55, "glitch": 0.012, "glyph": 0.6},
+    "listening": {"scale": 0.78, "alpha": 0.85, "glitch": 0.035, "glyph": 0.85},
+    "thinking":  {"scale": 0.90, "alpha": 0.95, "glitch": 0.060, "glyph": 0.95},
+    "talking":   {"scale": 1.00, "alpha": 1.00, "glitch": 0.085, "glyph": 1.0},
 }
 IDLE_GLYPH = "✳"
 
 
 class Orb:
-    SIZE = 96
-    FPS_MS = 33  # ~30 fps mientras anima
+    SIZE = 108
+    MAXP = 80  # lado máximo del panel (deja margen para glitch/glow)
+    FPS_MS = 33
 
     def __init__(self, app):
         w = Gtk.ApplicationWindow(application=app)
@@ -62,13 +72,13 @@ class Orb:
         self.win = w
         self.state = "idle"
         self.frame = 0
-        # valores animados (arrancan en idle)
         self.s_scale = STATES["idle"]["scale"]
-        self.s_glow = STATES["idle"]["glow"]
+        self.s_alpha = STATES["idle"]["alpha"]
         self.s_glyph = STATES["idle"]["glyph"]
+        self._glitch_frames = 0
         self._timer: int | None = None
-        w.set_visible(True)  # presencia pequeña y permanente
-        self._ensure_timer()  # un par de ticks para asentar y dibujar idle
+        w.set_visible(True)
+        self._ensure_timer()
 
     def _clickthrough(self, *_):
         try:
@@ -78,11 +88,17 @@ class Orb:
         except Exception:
             pass
 
+    def _reduced_motion(self) -> bool:
+        try:
+            return not Gtk.Settings.get_default().get_property("gtk-enable-animations")
+        except Exception:
+            return False
+
     def set_state(self, state: str) -> bool:
         if state in STATES and state != self.state:
             self.state = state
             self._ensure_timer()
-        return False  # usable como callback de GLib.idle_add
+        return False
 
     def _ensure_timer(self):
         if self._timer is None:
@@ -90,22 +106,25 @@ class Orb:
 
     def _settled(self) -> bool:
         t = STATES[self.state]
-        return (
-            abs(self.s_scale - t["scale"]) < 0.005
-            and abs(self.s_glow - t["glow"]) < 0.005
-            and abs(self.s_glyph - t["glyph"]) < 0.01
-        )
+        return (abs(self.s_scale - t["scale"]) < 0.004
+                and abs(self.s_alpha - t["alpha"]) < 0.004
+                and abs(self.s_glyph - t["glyph"]) < 0.01)
 
     def _tick(self) -> bool:
         self.frame += 1
         t = STATES[self.state]
         k = 0.18
         self.s_scale += (t["scale"] - self.s_scale) * k
-        self.s_glow += (t["glow"] - self.s_glow) * k
+        self.s_alpha += (t["alpha"] - self.s_alpha) * k
         self.s_glyph += (t["glyph"] - self.s_glyph) * k
+        rm = self._reduced_motion()
+        if not rm:
+            if self._glitch_frames > 0:
+                self._glitch_frames -= 1
+            elif random.random() < t["glitch"]:
+                self._glitch_frames = random.randint(2, 5)
         self.area.queue_draw()
-        # en idle, una vez asentado, parar -> orbe pequeño estático, cero consumo
-        if self.state == "idle" and self._settled():
+        if rm and self._settled():  # reduced-motion: congelar y parar (cero consumo)
             self._timer = None
             return False
         return True
@@ -114,35 +133,83 @@ class Orb:
         if self.state == "thinking":
             idx = (self.frame * self.FPS_MS // sparkle.FRAME_MS) % len(sparkle.FRAMES)
             return sparkle.FRAMES[idx]
-        if self.state == "talking":
+        if self.state in ("talking", "listening"):
             return sparkle.PEAK
         return IDLE_GLYPH
 
+    # --- composición ---
     def _draw(self, _area, cr, width, height):
-        cx, cy = width / 2, height / 2
-        max_r = min(width, height) / 2 - 3
-        pulse = 0.5 + 0.5 * math.sin(self.frame * 0.08)
-        glow = self.s_glow * (0.85 + 0.15 * pulse if self.state == "talking" else 1.0)
-        radius = max_r * self.s_scale
+        rm = self._reduced_motion()
+        # superficie offscreen con el panel + glifo
+        surf = cairo.ImageSurface(cairo.Format.ARGB32, width, height)
+        pcr = cairo.Context(surf)
+        self._panel(pcr, width, height)
+        surf.flush()
 
-        # halo radial (sin bordes duros)
-        halo = cairo.RadialGradient(cx, cy, radius * 0.15, cx, cy, radius)
-        halo.add_color_stop_rgba(0, *TEAL, glow)
-        halo.add_color_stop_rgba(1, *TEAL, 0.0)
-        cr.set_source(halo)
-        cr.arc(cx, cy, radius, 0, 2 * math.pi)
-        cr.fill()
+        self._glow(cr, width, height)
+        glitch = (not rm) and self._glitch_frames > 0
+        if glitch:
+            self._slice_paint(cr, surf, width, height)
+            dx = random.uniform(2.5, 5.5)
+            jitter = random.uniform(-1.5, 1.5)
+        else:
+            cr.set_source_surface(surf, 0, 0)
+            cr.paint()
+            dx = 0.0 if rm else 0.8
+            jitter = 0.0
+        if dx > 0:  # franjas de aberración RGB
+            cr.save()
+            cr.set_operator(cairo.Operator.ADD)
+            cr.set_source_rgba(*CYAN, 0.45)
+            cr.mask_surface(surf, dx, jitter)
+            cr.set_source_rgba(*MAGENTA, 0.45)
+            cr.mask_surface(surf, -dx, -jitter)
+            cr.restore()
+        self._scanlines(cr, width, height)
 
-        # glifo (PangoCairo, escalado con el orbe): bloom teal + nítido encima
-        font_px = max(9.0, radius * 0.92)
+    def _panel(self, pcr, w, h):
+        ps = self.MAXP * self.s_scale
+        a = self.s_alpha
+        x = (w - ps) / 2
+        y = (h - ps) / 2
+        rad = 7 * self.s_scale
+        self._rrect(pcr, x, y, ps, ps, rad)
+        pcr.set_source_rgba(*PANEL_BG, 0.55 * a)
+        pcr.fill()
+        self._rrect(pcr, x, y, ps, ps, rad)
+        pcr.set_source_rgba(*TEAL, 0.6 * a)
+        pcr.set_line_width(1.2)
+        pcr.stroke()
+        self._brackets(pcr, x, y, ps, a)
+        self._glyph_draw(pcr, w / 2, h / 2, ps, a)
+
+    def _rrect(self, cr, x, y, ww, hh, r):
+        cr.new_sub_path()
+        cr.arc(x + ww - r, y + r, r, -math.pi / 2, 0)
+        cr.arc(x + ww - r, y + hh - r, r, 0, math.pi / 2)
+        cr.arc(x + r, y + hh - r, r, math.pi / 2, math.pi)
+        cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
+        cr.close_path()
+
+    def _brackets(self, cr, x, y, ps, a):
+        n = ps * 0.24  # longitud del corner-bracket
+        cr.set_source_rgba(*TEAL, 0.95 * a)
+        cr.set_line_width(2.0)
+        for cx, cy, sx, sy in ((x, y, 1, 1), (x + ps, y, -1, 1),
+                               (x, y + ps, 1, -1), (x + ps, y + ps, -1, -1)):
+            cr.move_to(cx, cy + sy * n)
+            cr.line_to(cx, cy)
+            cr.line_to(cx + sx * n, cy)
+            cr.stroke()
+
+    def _glyph_draw(self, cr, cx, cy, ps, a):
+        font_px = max(8.0, ps * 0.46)
         layout = PangoCairo.create_layout(cr)
         desc = Pango.FontDescription("MesloLGL Nerd Font Mono")
         desc.set_weight(Pango.Weight.BOLD)
         glyph = self._glyph()
-        for size_mul, color, alpha in (
-            (1.18, TEAL, self.s_glyph * 0.45),       # bloom
-            (1.0, WHITE_TEAL, self.s_glyph),          # nítido
-        ):
+        for size_mul, color, alpha in ((1.18, TEAL, self.s_glyph * 0.5 * a),
+                                       (1.0, WHITE_TEAL, self.s_glyph * a)):
             desc.set_absolute_size(font_px * size_mul * Pango.SCALE)
             layout.set_font_description(desc)
             layout.set_text(glyph, -1)
@@ -150,3 +217,38 @@ class Orb:
             cr.set_source_rgba(*color, alpha)
             cr.move_to(cx - gw / 2, cy - gh / 2)
             PangoCairo.show_layout(cr, layout)
+
+    def _glow(self, cr, w, h):
+        r = (self.MAXP * self.s_scale) * 0.85
+        cx, cy = w / 2, h / 2
+        g = cairo.RadialGradient(cx, cy, r * 0.3, cx, cy, r)
+        g.add_color_stop_rgba(0, *TEAL, 0.18 * self.s_alpha)
+        g.add_color_stop_rgba(1, *TEAL, 0.0)
+        cr.set_source(g)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.fill()
+
+    def _slice_paint(self, cr, surf, w, h):
+        n = random.randint(2, 4)
+        pop = list(range(10, h - 10))
+        bounds = sorted(random.sample(pop, min(n, len(pop)))) if pop else []
+        prev = 0
+        for yb in bounds + [h]:
+            off = random.randint(-6, 6)
+            cr.save()
+            cr.rectangle(0, prev, w, yb - prev)
+            cr.clip()
+            cr.set_source_surface(surf, off, 0)
+            cr.paint()
+            cr.restore()
+            prev = yb
+
+    def _scanlines(self, cr, w, h):
+        cr.save()
+        cr.set_source_rgba(0, 0, 0, 0.10)
+        y = 0
+        while y < h:
+            cr.rectangle(0, y, w, 1)
+            y += 3
+        cr.fill()
+        cr.restore()
