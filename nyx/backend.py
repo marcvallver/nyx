@@ -20,6 +20,20 @@ from . import streamparse
 
 MODEL = "sonnet"  # rápido/barato para chat; Opus para tareas pesadas
 
+# Perfil dedicado de Nyx (personal, fuera del repo): persona + permisos restringidos.
+# Marc los versiona en ~/dotfiles/.claude/nyx/ y los symlinka aquí.
+NYX_CONFIG = os.path.expanduser("~/.config/nyx")
+_SETTINGS = os.path.join(NYX_CONFIG, "settings.json")
+_PERSONA = os.path.join(NYX_CONFIG, "persona.md")
+
+
+def _read(path: str) -> str:
+    try:
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
 
 def _resolve_claude() -> str | None:
     """Ruta estable del binario `claude` (resuelve el shim efímero de fnm)."""
@@ -65,6 +79,11 @@ class ClaudeBackend:
             "--include-partial-messages", "--verbose",
             "--model", MODEL,
         ]
+        if os.path.exists(_SETTINGS):
+            argv += ["--settings", _SETTINGS]   # perfil aislado: permisos restringidos
+        persona = _read(_PERSONA)
+        if persona:
+            argv += ["--append-system-prompt", persona]  # personalidad de Nyx
         if self.session_id:
             argv += ["--resume", self.session_id]
         return argv
