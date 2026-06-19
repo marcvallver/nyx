@@ -1,6 +1,6 @@
 """Daemon de Nyx: Gtk.Application (instancia única) que posee el socket de control
-y las superficies de UI. Fase 1: bocadillo + barra de entrada + chat con Claude
-(streaming) por socket. El avatar persistente y la confirmación llegan después."""
+y las superficies de UI. Fase 2: orbe avatar (estados) + bocadillo + chat con Claude
+(streaming) por socket. La confirmación de acciones llega en la Fase 4."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from . import streamparse  # noqa: E402
+from .avatar import Orb  # noqa: E402
 from .backend import ClaudeBackend  # noqa: E402
 from .bubble import Bubble  # noqa: E402
 from .client import socket_path  # noqa: E402
@@ -24,6 +25,7 @@ class NyxApp(Gtk.Application):
 
     def do_activate(self):
         self.hold()  # seguir vivo sin ventanas visibles
+        self.orb = Orb(self)
         self.bubble = Bubble(self)
         self.inputbar = InputBar(self, self.send_turn)
         self.backend = ClaudeBackend(self._on_signal)
@@ -64,17 +66,20 @@ class NyxApp(Gtk.Application):
         if self.backend.busy:
             self.bubble.show_text("Espera, aún estoy con lo anterior…", 4000)
             return False
-        self.bubble.start_stream()  # bocadillo vacío + sparkle "pensando" al instante
+        self.orb.set_state("thinking")     # orbe latiendo al instante
+        self.bubble.start_stream()
         self.backend.ask(text)
         return False
 
     def _on_signal(self, sig) -> None:
         if isinstance(sig, streamparse.TextDelta):
+            self.orb.set_state("talking")  # idempotente; pasa a "hablando" al primer token
             self.bubble.append(sig.text)
         elif isinstance(sig, streamparse.Result):
             if sig.is_error and not self.bubble._buf.strip():
                 self.bubble.append(sig.text or "(error)")
             self.bubble.finalize()
+            self.orb.set_state("idle")     # se desvanece y para (cero consumo)
 
 
 def main() -> None:
