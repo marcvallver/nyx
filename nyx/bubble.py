@@ -1,6 +1,6 @@
 """Bocadillo cyberpunk de Nyx: ventana layer-shell (esquina sup-der, click-through)
-con un sparkle animado + el texto. Soporta streaming (start/append/finalize) y un
-atajo `show_text` para mensajes de una pieza. Auto-oculta tras un TTL."""
+con un sparkle animado + el texto. Fade-in/out con Gtk.Revealer, streaming
+(start/append/finalize) y render de markdown al finalizar. Auto-oculta tras un TTL."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk, Gtk4LayerShell as LS  # noqa: E402
 
-from . import sparkle, theme  # noqa: E402
+from . import markup, sparkle, theme  # noqa: E402
 
 
 class Bubble:
@@ -46,7 +46,12 @@ class Bubble:
         row.add_css_class("nyx-box")
         row.append(self.spark)
         row.append(self.text)
-        w.set_child(row)
+
+        self.revealer = Gtk.Revealer()
+        self.revealer.set_transition_type(Gtk.RevealerTransitionType.CROSSFADE)
+        self.revealer.set_transition_duration(180)
+        self.revealer.set_child(row)
+        w.set_child(self.revealer)
         w.connect("realize", self._clickthrough)
 
         self.win = w
@@ -69,6 +74,7 @@ class Bubble:
     # --- streaming ---
     def _show(self) -> None:
         self.win.set_visible(True)
+        self.revealer.set_reveal_child(True)
         if self._tick_id is None:
             self._tick_id = GLib.timeout_add(sparkle.FRAME_MS, self._tick)
         if self._fade_id is not None:
@@ -83,16 +89,20 @@ class Bubble:
 
     def append(self, chunk: str) -> None:
         self._buf += chunk
-        self.text.set_text(self._buf)
+        self.text.set_text(self._buf)  # texto plano mientras streamea (markup parcial rompe)
 
     def finalize(self, ttl_ms: int = 15000) -> None:
+        try:
+            self.text.set_markup(markup.to_pango(self._buf))  # markdown bonito al cerrar
+        except Exception:
+            self.text.set_text(self._buf)
         if self._fade_id is not None:
             GLib.source_remove(self._fade_id)
         self._fade_id = GLib.timeout_add(ttl_ms, self._hide)
 
     def show_text(self, text: str, ttl_ms: int = 12000) -> bool:
         self.start_stream()
-        self.append(text)
+        self._buf = text
         self.finalize(ttl_ms)
         return False
 
@@ -102,9 +112,15 @@ class Bubble:
         return True
 
     def _hide(self) -> bool:
-        self.win.set_visible(False)
+        self.revealer.set_reveal_child(False)  # fade-out
         if self._tick_id is not None:
             GLib.source_remove(self._tick_id)
             self._tick_id = None
         self._fade_id = None
+        GLib.timeout_add(220, self._really_hide)
+        return False
+
+    def _really_hide(self) -> bool:
+        if not self.revealer.get_reveal_child():  # sigue oculto (no re-abierto entretanto)
+            self.win.set_visible(False)
         return False

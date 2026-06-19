@@ -1,16 +1,17 @@
 """Backend de Nyx: lanza el Claude Code CLI por turno y streamea la respuesta.
 
-Fase 1: un `claude -p` por turno con `--resume <session_id>` para continuidad
-(sencillo y robusto; el coste de arranque se cubre con el sparkle "thinking").
-Usa el parser puro de `nyx/streamparse.py`. Modelo rápido (sonnet) para el chat.
-
-Nota: invoca vía `zsh -ic 'exec claude "$@"'` para resolver el shim de fnm; el
-prompt va como argv literal (sin shell-quoting). stderr silenciado (ruido p10k).
-Optimización futura: resolver la ruta del binario `claude` una vez y lanzarlo directo.
+Fase 1 (rápida): resuelve la ruta ESTABLE del binario `claude` una vez (el shim de
+fnm es efímero) y lo lanza DIRECTO — sin `zsh -ic` (ahorra ~1s de arranque + ruido
+de p10k). Fallback a `zsh -ic 'exec claude "$@"'` si no se resuelve el binario.
+Un `claude -p` por turno con `--resume <session_id>` para continuidad. Modelo sonnet.
+Parser puro de `nyx/streamparse.py`. stderr silenciado.
 """
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from typing import Callable
 
 from gi.repository import Gio, GLib
@@ -20,21 +21,45 @@ from . import streamparse
 MODEL = "sonnet"  # rápido/barato para chat; Opus para tareas pesadas
 
 
+def _resolve_claude() -> str | None:
+    """Ruta estable del binario `claude` (resuelve el shim efímero de fnm)."""
+    p = shutil.which("claude")
+    if not p:
+        try:
+            out = subprocess.run(
+                ["zsh", "-ic", "command -v claude"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            lines = [x.strip() for x in out.stdout.splitlines() if x.strip()]
+            p = lines[-1] if lines else None
+        except Exception:
+            p = None
+    if p:
+        real = os.path.realpath(p)  # fnm_multishells (efímero) -> node-version (estable)
+        if os.path.exists(real):
+            return real
+    return None
+
+
 class ClaudeBackend:
     def __init__(self, on_signal: Callable[[object], None]):
         self.on_signal = on_signal  # callback(signal), en el bucle GLib
         self.session_id: str | None = None
         self.busy = False
         self._parser = streamparse.StreamParser()
+        self._claude_bin = _resolve_claude()  # una vez; None -> fallback zsh
 
-    def ask(self, prompt: str) -> bool:
-        prompt = (prompt or "").strip()
-        if self.busy or not prompt:
-            return False
-        self.busy = True
-        self._parser = streamparse.StreamParser()
-        argv = [
-            "zsh", "-ic", 'exec claude "$@"', "nyx",
+    def _argv(self, prompt: str) -> list[str]:
+        if not (self._claude_bin and os.path.exists(self._claude_bin)):
+            self._claude_bin = _resolve_claude()  # re-resolver (p.ej. tras upgrade de node)
+        head = (
+            [self._claude_bin]
+            if self._claude_bin
+            else ["zsh", "-ic", 'exec claude "$@"', "nyx"]
+        )
+        argv = head + [
             "-p", prompt,
             "--output-format", "stream-json",
             "--include-partial-messages", "--verbose",
@@ -42,9 +67,17 @@ class ClaudeBackend:
         ]
         if self.session_id:
             argv += ["--resume", self.session_id]
+        return argv
+
+    def ask(self, prompt: str) -> bool:
+        prompt = (prompt or "").strip()
+        if self.busy or not prompt:
+            return False
+        self.busy = True
+        self._parser = streamparse.StreamParser()
         try:
             proc = Gio.Subprocess.new(
-                argv,
+                self._argv(prompt),
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE,
             )
         except GLib.Error as e:
