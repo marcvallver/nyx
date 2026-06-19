@@ -29,6 +29,21 @@ def _strip_md(text: str) -> str:
     return _MD.sub("", text).strip()
 
 
+def split_sentences(buf: str) -> tuple[list[str], str]:
+    """Separa `buf` en (frases completas, resto incompleto).
+
+    Una frase termina en . ! ? … o salto de línea. El resto (sin terminador) se
+    devuelve para acumularlo con el siguiente chunk del streaming. Función PURA (testeable)."""
+    sents: list[str] = []
+    last = 0
+    for m in _SENT.finditer(buf):
+        s = m.group().strip()
+        if s:
+            sents.append(s)
+        last = m.end()
+    return sents, buf[last:]
+
+
 def _voice_rate(voice_onnx: str) -> int:
     try:
         with open(voice_onnx + ".json", encoding="utf-8") as f:
@@ -62,14 +77,9 @@ class TtsSpeaker:
         if not self.enabled:
             return
         self._buf += chunk
-        last = 0
-        for m in _SENT.finditer(self._buf):
-            sent = m.group().strip()
-            if sent:
-                self._q.put(sent)
-            last = m.end()
-        if last:
-            self._buf = self._buf[last:]
+        sents, self._buf = split_sentences(self._buf)
+        for s in sents:
+            self._q.put(s)
 
     def flush(self) -> None:
         """Fin de turno: habla lo que quede en el buffer."""

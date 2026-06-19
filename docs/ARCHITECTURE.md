@@ -78,3 +78,20 @@ Los verbos se diseñan finos para envolverlos luego en D-Bus `org.marc.Nyx1`.
 `systemd --user` (unit en `~/.config/systemd/user`, `PartOf=graphical-session.target`,
 `Restart=on-failure`, `Environment=LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so`). Fallback probado:
 `~/.config/autostart/nyx.desktop`. `nyx-ctl` soporta ambos.
+
+## Voz (STT / TTS) — `nyx/voice.py`, `nyx/stt_worker.py`
+
+- **STT (escuchar, push-to-talk):** `nyx/stt_worker.py` corre en un **venv aparte**
+  (`~/.local/share/nyx/venv-voice`) porque el daemon usa el python del sistema (sin faster-whisper).
+  El worker carga **faster-whisper** una vez (caliente) y, por stdin (`start`/`stop`), graba el micro
+  con `pw-record` (raw 16 kHz mono) y **corta solo** ~800 ms después de que callas vía **webrtcvad**
+  (auto-stop), o por `stop`/tope. Transcribe en español e imprime `TEXT:<…>`. `SttListener` (lado
+  daemon) lo controla por stdin y, al recibir texto, lo reinyecta por `app.send_turn` (mismo flujo que
+  la barra → orbe `thinking`). Op socket `listen` (toggle) + atajo KDE. **Lean: webrtcvad + numpy, sin
+  torch ni CUDA** (silero-vad arrastraba torch+CUDA → descartado).
+- **TTS (hablar, frase a frase):** `TtsSpeaker` (hilo worker, cola). En `_on_signal` el streaming de
+  Claude se trocea por frases (`split_sentences`, pura/testeada) y cada frase se habla en cuanto se
+  cierra (efecto Siri). Backend **Piper** (`piper --output_raw | aplay`) con fallback a **espeak-ng**;
+  markdown se limpia para el habla (`_strip_md`). Toggle de salida vía op `tts`.
+- **Premium opcional (futuro):** backend TTS **Gemini** (endpoint dedicado, voz HD española) seleccionable
+  por config, con Piper de fallback; el STT se queda **siempre local** por privacidad.
