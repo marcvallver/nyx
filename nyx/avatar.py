@@ -1,10 +1,10 @@
-"""Avatar de Nyx: el orbe cyberpunk = glow Cairo + el glifo sparkle de Claude latiendo
-en el centro (fusión del sparkle con el orbe).
+"""Avatar de Nyx: glow Cairo + el glifo sparkle de Claude, sin anillos.
 
-Cairo/CPU (sin GLArea, por el bug NVIDIA #4835) dibuja halo + núcleo + anillo, y un
-Gtk.Label superpuesto (Gtk.Overlay) cicla el glifo `· ✢ ✳ ✶ ✻ ✽`. Estados
-idle/thinking/talking. Ventana layer-shell propia (sup-der, click-through). Solo anima
-cuando está activo: al volver a idle se desvanece y PARA el timer (cero consumo).
+Un orbe suave (halo radial) con el glifo `· ✢ ✳ ✶ ✻ ✽` dibujado con PangoCairo
+en el centro. Pequeño y discreto en idle; CRECE al pensar/hablar. Sin círculo de
+carga. Estados idle/thinking/talking con transición suave (scale/alpha lerpeados).
+Cairo/CPU (sin GLArea, por el bug NVIDIA #4835). Solo anima cuando hace falta:
+en idle estable PARA el timer (cero consumo). Ventana layer-shell, click-through.
 """
 
 from __future__ import annotations
@@ -15,28 +15,28 @@ import cairo
 import gi
 
 gi.require_version("Gtk", "4.0")
+gi.require_version("Pango", "1.0")
+gi.require_version("PangoCairo", "1.0")
 gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import GLib, Gtk, Gtk4LayerShell as LS  # noqa: E402
+from gi.repository import GLib, Gtk, Pango, PangoCairo, Gtk4LayerShell as LS  # noqa: E402
 
 from . import sparkle, theme  # noqa: E402
 
 TEAL = (0.333, 0.918, 0.831)  # #55EAD4
-CORE = (0.85, 1.0, 0.97)      # blanco-teal del núcleo
+WHITE_TEAL = (0.85, 1.0, 0.97)
 
-GLYPH_CSS = """
-.nyx-orb-glyph {
-  color: #eafff9;
-  font-family: "MesloLGL Nerd Font Mono", "DejaVu Sans", monospace;
-  font-size: 30px;
-  font-weight: bold;
-  text-shadow: 0 0 8px rgba(85,234,212,0.9), 0 0 18px rgba(85,234,212,0.5);
+# objetivos por estado: scale (tamaño), glow (alpha halo), glyph (alpha glifo)
+STATES = {
+    "idle":     {"scale": 0.40, "glow": 0.16, "glyph": 0.6},
+    "thinking": {"scale": 0.82, "glow": 0.34, "glyph": 0.95},
+    "talking":  {"scale": 1.00, "glow": 0.42, "glyph": 1.0},
 }
-"""
+IDLE_GLYPH = "✳"
 
 
 class Orb:
-    SIZE = 120
-    FPS_MS = 33  # ~30 fps mientras está activo
+    SIZE = 96
+    FPS_MS = 33  # ~30 fps mientras anima
 
     def __init__(self, app):
         w = Gtk.ApplicationWindow(application=app)
@@ -44,38 +44,31 @@ class Orb:
         LS.set_layer(w, LS.Layer.OVERLAY)
         LS.set_anchor(w, LS.Edge.TOP, True)
         LS.set_anchor(w, LS.Edge.RIGHT, True)
-        LS.set_margin(w, LS.Edge.TOP, 14)
-        LS.set_margin(w, LS.Edge.RIGHT, 16)
+        LS.set_margin(w, LS.Edge.TOP, 16)
+        LS.set_margin(w, LS.Edge.RIGHT, 18)
         LS.set_keyboard_mode(w, LS.KeyboardMode.NONE)
         LS.set_namespace(w, "nyx-avatar")
         w.set_decorated(False)
         w.set_default_size(self.SIZE, self.SIZE)
         theme.apply_css("window { background: transparent; }")
-        theme.apply_css(GLYPH_CSS)
 
         self.area = Gtk.DrawingArea()
         self.area.set_content_width(self.SIZE)
         self.area.set_content_height(self.SIZE)
         self.area.set_draw_func(self._draw)
-
-        self.glyph = Gtk.Label(label=sparkle.FRAMES[0])
-        self.glyph.add_css_class("nyx-orb-glyph")
-        self.glyph.set_halign(Gtk.Align.CENTER)
-        self.glyph.set_valign(Gtk.Align.CENTER)
-        self.glyph.set_can_target(False)
-
-        overlay = Gtk.Overlay()
-        overlay.set_child(self.area)
-        overlay.add_overlay(self.glyph)
-        w.set_child(overlay)
+        w.set_child(self.area)
         w.connect("realize", self._clickthrough)
 
         self.win = w
         self.state = "idle"
         self.frame = 0
-        self.alpha = 0.0  # fade global 0..1
+        # valores animados (arrancan en idle)
+        self.s_scale = STATES["idle"]["scale"]
+        self.s_glow = STATES["idle"]["glow"]
+        self.s_glyph = STATES["idle"]["glyph"]
         self._timer: int | None = None
-        w.set_visible(False)
+        w.set_visible(True)  # presencia pequeña y permanente
+        self._ensure_timer()  # un par de ticks para asentar y dibujar idle
 
     def _clickthrough(self, *_):
         try:
@@ -86,10 +79,8 @@ class Orb:
             pass
 
     def set_state(self, state: str) -> bool:
-        if state != self.state:
+        if state in STATES and state != self.state:
             self.state = state
-            if state != "idle":
-                self.win.set_visible(True)
             self._ensure_timer()
         return False  # usable como callback de GLib.idle_add
 
@@ -97,78 +88,65 @@ class Orb:
         if self._timer is None:
             self._timer = GLib.timeout_add(self.FPS_MS, self._tick)
 
+    def _settled(self) -> bool:
+        t = STATES[self.state]
+        return (
+            abs(self.s_scale - t["scale"]) < 0.005
+            and abs(self.s_glow - t["glow"]) < 0.005
+            and abs(self.s_glyph - t["glyph"]) < 0.01
+        )
+
     def _tick(self) -> bool:
         self.frame += 1
-        target = 0.0 if self.state == "idle" else 1.0
-        self.alpha += (target - self.alpha) * 0.18
-        # glifo: cicla al pensar a la cadencia REAL de Claude (120 ms/frame),
-        # desacoplado del redibujado del glow (~30 fps). Se queda en el pico al hablar.
-        if self.state == "thinking":
-            idx = (self.frame * self.FPS_MS // sparkle.FRAME_MS) % len(sparkle.FRAMES)
-            self.glyph.set_text(sparkle.FRAMES[idx])
-        elif self.state == "talking":
-            self.glyph.set_text(sparkle.PEAK)
-        self.glyph.set_opacity(self.alpha)
+        t = STATES[self.state]
+        k = 0.18
+        self.s_scale += (t["scale"] - self.s_scale) * k
+        self.s_glow += (t["glow"] - self.s_glow) * k
+        self.s_glyph += (t["glyph"] - self.s_glyph) * k
         self.area.queue_draw()
-        if self.state == "idle" and self.alpha < 0.02:
-            self.alpha = 0.0
-            self.win.set_visible(False)
+        # en idle, una vez asentado, parar -> orbe pequeño estático, cero consumo
+        if self.state == "idle" and self._settled():
             self._timer = None
-            return False  # para el timer en reposo -> cero consumo
+            return False
         return True
 
-    def _draw(self, _area, cr, width, height):
-        if self.alpha <= 0.0:
-            return
-        cx, cy = width / 2, height / 2
-        radius = min(width, height) / 2 - 6
-        a = self.alpha
-        f = self.frame
-        pulse = 0.5 + 0.5 * math.sin(f * 0.08)
-
+    def _glyph(self) -> str:
+        if self.state == "thinking":
+            idx = (self.frame * self.FPS_MS // sparkle.FRAME_MS) % len(sparkle.FRAMES)
+            return sparkle.FRAMES[idx]
         if self.state == "talking":
-            core_r = radius * (0.42 + 0.12 * pulse)
-            ring_a, glow_a = 0.70, 0.42
-        elif self.state == "thinking":
-            core_r = radius * (0.36 + 0.06 * pulse)
-            ring_a, glow_a = 0.55, 0.32
-        else:  # idle (desvaneciéndose)
-            core_r = radius * 0.36
-            ring_a, glow_a = 0.40, 0.24
+            return sparkle.PEAK
+        return IDLE_GLYPH
 
-        # halo radial
-        halo = cairo.RadialGradient(cx, cy, core_r * 0.4, cx, cy, radius)
-        halo.add_color_stop_rgba(0, *TEAL, glow_a * a)
+    def _draw(self, _area, cr, width, height):
+        cx, cy = width / 2, height / 2
+        max_r = min(width, height) / 2 - 3
+        pulse = 0.5 + 0.5 * math.sin(self.frame * 0.08)
+        glow = self.s_glow * (0.85 + 0.15 * pulse if self.state == "talking" else 1.0)
+        radius = max_r * self.s_scale
+
+        # halo radial (sin bordes duros)
+        halo = cairo.RadialGradient(cx, cy, radius * 0.15, cx, cy, radius)
+        halo.add_color_stop_rgba(0, *TEAL, glow)
         halo.add_color_stop_rgba(1, *TEAL, 0.0)
         cr.set_source(halo)
         cr.arc(cx, cy, radius, 0, 2 * math.pi)
         cr.fill()
 
-        # núcleo (blanco-teal -> teal -> transparente), tras el glifo
-        core = cairo.RadialGradient(cx, cy, 0, cx, cy, core_r)
-        core.add_color_stop_rgba(0, *CORE, 0.55 * a)
-        core.add_color_stop_rgba(0.5, *TEAL, 0.45 * a)
-        core.add_color_stop_rgba(1, *TEAL, 0.0)
-        cr.set_source(core)
-        cr.arc(cx, cy, core_r, 0, 2 * math.pi)
-        cr.fill()
-
-        # anillo base
-        cr.set_source_rgba(*TEAL, ring_a * a)
-        cr.set_line_width(1.6)
-        cr.arc(cx, cy, radius * 0.78, 0, 2 * math.pi)
-        cr.stroke()
-
-        if self.state == "thinking":
-            ang = f * 0.13  # arco rotatorio (procesando)
-            cr.set_source_rgba(0.85, 1.0, 0.97, 0.9 * a)
-            cr.set_line_width(3)
-            cr.arc(cx, cy, radius * 0.78, ang, ang + math.pi * 0.5)
-            cr.stroke()
-        elif self.state == "talking":
-            for k in range(2):  # ripples expansivos (hablando)
-                rp = (f * 0.04 + k * 0.5) % 1.0
-                cr.set_source_rgba(*TEAL, (1.0 - rp) * 0.5 * a)
-                cr.set_line_width(2)
-                cr.arc(cx, cy, radius * 0.55 + rp * radius * 0.42, 0, 2 * math.pi)
-                cr.stroke()
+        # glifo (PangoCairo, escalado con el orbe): bloom teal + nítido encima
+        font_px = max(9.0, radius * 0.92)
+        layout = PangoCairo.create_layout(cr)
+        desc = Pango.FontDescription("MesloLGL Nerd Font Mono")
+        desc.set_weight(Pango.Weight.BOLD)
+        glyph = self._glyph()
+        for size_mul, color, alpha in (
+            (1.18, TEAL, self.s_glyph * 0.45),       # bloom
+            (1.0, WHITE_TEAL, self.s_glyph),          # nítido
+        ):
+            desc.set_absolute_size(font_px * size_mul * Pango.SCALE)
+            layout.set_font_description(desc)
+            layout.set_text(glyph, -1)
+            gw, gh = layout.get_pixel_size()
+            cr.set_source_rgba(*color, alpha)
+            cr.move_to(cx - gw / 2, cy - gh / 2)
+            PangoCairo.show_layout(cr, layout)

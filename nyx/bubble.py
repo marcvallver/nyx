@@ -72,14 +72,20 @@ class Bubble:
     def start_stream(self) -> bool:
         self._buf = ""
         self.text.set_text("")
-        self._show()
+        # NO mostramos aún: la caja aparece solo cuando llega texto (ver append/finalize)
         return False  # usable como callback de GLib.idle_add
 
     def append(self, chunk: str) -> None:
         self._buf += chunk
         self.text.set_text(self._buf)  # texto plano mientras streamea (markup parcial rompe)
+        if self._buf.strip() and not self.win.get_visible():
+            self._show()  # primer texto -> aparece la caja
 
     def finalize(self, ttl_ms: int = 15000) -> None:
+        if not self._buf.strip():
+            return  # nada que renderizar -> no dibujamos caja vacía
+        if not self.win.get_visible():
+            self._show()
         try:
             self.text.set_markup(markup.to_pango(self._buf))  # markdown bonito al cerrar
         except Exception:
