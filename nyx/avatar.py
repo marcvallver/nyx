@@ -101,9 +101,11 @@ class Orb:
         self.frame += 1
         target = 0.0 if self.state == "idle" else 1.0
         self.alpha += (target - self.alpha) * 0.18
-        # glifo: cicla al pensar, se queda en el pico al hablar
+        # glifo: cicla al pensar a la cadencia REAL de Claude (120 ms/frame),
+        # desacoplado del redibujado del glow (~30 fps). Se queda en el pico al hablar.
         if self.state == "thinking":
-            self.glyph.set_text(sparkle.FRAMES[self.frame % len(sparkle.FRAMES)])
+            idx = (self.frame * self.FPS_MS // sparkle.FRAME_MS) % len(sparkle.FRAMES)
+            self.glyph.set_text(sparkle.FRAMES[idx])
         elif self.state == "talking":
             self.glyph.set_text(sparkle.PEAK)
         self.glyph.set_opacity(self.alpha)
