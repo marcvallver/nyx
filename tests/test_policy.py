@@ -16,6 +16,18 @@ def test_deny_dangerous():
         assert classify_bash(c)[0] == "deny", c
 
 
+def test_find_action_not_auto_allowed():
+    # find de solo lectura sigue permitido
+    assert classify_bash("find . -name '*.py'")[0] == "allow"
+    assert classify_bash("find /tmp -type f")[0] == "allow"
+    # find que borra/ejecuta/escribe NO se auto-permite (era un bypass del denylist)
+    assert classify_bash("find /home/marc -delete")[0] == "deny"
+    assert classify_bash("find ~/.ssh -delete")[0] == "deny"
+    assert classify_bash("find . -type f -exec chmod 777 {} +")[0] == "gray"
+    assert classify_bash("find . -exec rm -rf {} +")[0] == "deny"  # además lo caza el patrón rm
+    assert classify_bash("find . -fprint /tmp/out")[0] == "gray"
+
+
 def test_secret_access_deny():
     assert classify_bash("cat ~/.ssh/id_ed25519")[0] == "deny"
     assert classify("Read", {"file_path": "/home/marc/.ssh/id_rsa"})[0] == "deny"

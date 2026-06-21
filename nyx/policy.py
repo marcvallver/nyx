@@ -22,6 +22,7 @@ ALLOW_STORE = os.path.expanduser("~/.config/nyx/allowed.json")
 # --- patrones de DENEGACIÓN dura (Bash) ---
 _DENY = [
     (r"\brm\b[^|;&]*-[a-zA-Z]*[rf]", "borrado recursivo/forzado"),
+    (r"\bfind\b[^|;&]*\s-delete\b", "find -delete (borrado masivo)"),
     (r"\b(sudo|doas|pkexec)\b", "elevación de privilegios"),
     (r"\bdd\b", "dd (sobrescritura de disco)"),
     (r"\bmkfs", "formateo"),
@@ -54,6 +55,10 @@ _SAFE_BASH = {
 _SAFE_GIT_SUB = {"status", "diff", "log", "branch", "show", "remote", "rev-parse",
                  "describe", "config", "stash"}
 
+# `find` con acciones que ejecutan/escriben (no solo listar) → no es seguro, se pregunta a Marc.
+# (-delete ya cae en _DENY; -exec con rm/dd/… lo caza el patrón del comando interno.)
+_FIND_ACTION = re.compile(r"\s-(exec|execdir|ok|okdir|fprint|fprintf|fls)\b", re.IGNORECASE)
+
 _READ_TOOLS = {"Read", "Glob", "Grep", "LS", "NotebookRead"}
 _WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
@@ -84,6 +89,8 @@ def classify_bash(cmd: str) -> tuple[str, str]:
     if _SECRET.search(cmd):
         return ("deny", "acceso a un secreto")
     first = _first_token(cmd)
+    if first == "find" and _FIND_ACTION.search(cmd):
+        return ("gray", "find con -exec/-fprint (ejecuta o escribe): confirmar")
     if first == "git" and not _has_chain(cmd):
         try:
             sub = shlex.split(cmd)[1] if len(shlex.split(cmd)) > 1 else ""
