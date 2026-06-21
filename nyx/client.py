@@ -29,7 +29,7 @@ def send(obj: dict, timeout: float = 2.0) -> dict | None:
         while True:
             try:
                 buf = s.recv(4096)
-            except socket.timeout:
+            except TimeoutError:
                 break
             if not buf:
                 break

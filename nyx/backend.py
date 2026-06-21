@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Callable
+from collections.abc import Callable
 
 from gi.repository import Gio, GLib
 
@@ -105,7 +105,9 @@ class ClaudeBackend:
         except GLib.Error as e:
             self.busy = False
             self.on_signal(
-                streamparse.Result(subtype="error", text=f"no pude lanzar claude: {e}", is_error=True)
+                streamparse.Result(
+                    subtype="error", text=f"no pude lanzar claude: {e}", is_error=True
+                )
             )
             return False
         stdout = Gio.DataInputStream.new(proc.get_stdout_pipe())

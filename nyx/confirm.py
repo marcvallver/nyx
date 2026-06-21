@@ -5,13 +5,14 @@ Permitir una vez / Permitir siempre."""
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import Gdk, Gtk, Gtk4LayerShell as LS  # noqa: E402
+from gi.repository import Gdk, Gtk  # noqa: E402
+from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
 from . import theme  # noqa: E402
 
@@ -29,9 +30,18 @@ window { background: transparent; }
   font-size: 14px; background: #0a0a12; border-radius: 8px; padding: 8px 10px;
 }
 .nyx-confirm-reason { color: #7fb6ad; font-size: 11px; }
-button.nyx-deny  { background: rgba(197,0,60,0.22); color: #ff6b8e; border: 1px solid #c5003c; border-radius: 8px; padding: 6px 12px; }
-button.nyx-once  { background: rgba(85,234,212,0.18); color: #55ead4; border: 1px solid #55ead4; border-radius: 8px; padding: 6px 12px; }
-button.nyx-always{ background: transparent; color: #7fb6ad; border: 1px solid #2c5c55; border-radius: 8px; padding: 6px 12px; }
+button.nyx-deny {
+  background: rgba(197,0,60,0.22); color: #ff6b8e;
+  border: 1px solid #c5003c; border-radius: 8px; padding: 6px 12px;
+}
+button.nyx-once {
+  background: rgba(85,234,212,0.18); color: #55ead4;
+  border: 1px solid #55ead4; border-radius: 8px; padding: 6px 12px;
+}
+button.nyx-always {
+  background: transparent; color: #7fb6ad;
+  border: 1px solid #2c5c55; border-radius: 8px; padding: 6px 12px;
+}
 """
 
 
@@ -89,7 +99,9 @@ class ConfirmPopup:
         self._cb: Callable[[str], None] | None = None
         w.set_visible(False)
 
-    def show(self, tool: str, command: str, reason: str, on_decision: Callable[[str], None]) -> bool:
+    def show(
+        self, tool: str, command: str, reason: str, on_decision: Callable[[str], None]
+    ) -> bool:
         self._cb = on_decision
         verb = "ejecutar" if tool == "Bash" else "usar"
         self.title.set_text(f"🌙 Nyx quiere {verb} ({tool}):")

@@ -134,7 +134,8 @@ def split_sentences(buf: str) -> tuple[list[str], str]:
     return sents, buf[last:]
 
 
-# umbral de agrupado para TTS: por debajo se espera (respuesta entera = mejor prosodia y 1 sola llamada)
+# umbral de agrupado para TTS: por debajo se espera (respuesta entera = mejor prosodia,
+# 1 sola llamada)
 TTS_CHUNK_CHARS = 280
 
 
@@ -353,7 +354,8 @@ class TtsSpeaker:
         """edge-tts (voces neuronales de MS Edge, gratis, mp3) → PCM s16le 24kHz mono vía ffmpeg.
         Bloqueante (corre en el hilo de síntesis, nunca en el bucle GLib)."""
         edge = subprocess.Popen(
-            [self._edge, "--voice", self.edge_voice, "--text", text, "--write-media", "/dev/stdout"],
+            [self._edge, "--voice", self.edge_voice, "--text", text,
+             "--write-media", "/dev/stdout"],
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         )
         ff = subprocess.Popen(

@@ -57,7 +57,8 @@ def test_code_fence_block():
 
 
 def test_to_pango_always_valid_xml():
-    # propiedad: pase lo que pase, el markup resultante es XML/Pango bien formado (no rompe el Label)
+    # propiedad: pase lo que pase, el markup resultante es XML/Pango bien formado
+    # (no rompe el Label)
     casos = [
         "**a *b _c `d ~~e [f](g # h > - i",
         "<script> & 'quotes' \"x\"",

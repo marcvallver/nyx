@@ -6,19 +6,23 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import Gdk, Gtk, Gtk4LayerShell as LS  # noqa: E402
+from gi.repository import Gdk, Gtk  # noqa: E402
+from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
 from . import hud, theme  # noqa: E402
 
 
 class InputBar:
-    def __init__(self, app, on_submit: Callable[[str], None], on_dismiss: Callable[[], None] | None = None):
+    def __init__(
+        self, app, on_submit: Callable[[str], None],
+        on_dismiss: Callable[[], None] | None = None,
+    ):
         self.on_submit = on_submit
         self.on_dismiss = on_dismiss
         w = Gtk.ApplicationWindow(application=app)

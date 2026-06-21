@@ -41,7 +41,8 @@ def main() -> int:
     tts = TtsSpeaker()
     print(f"modelo={tts.gemini_model}  voz={tts.gemini_voice}  sink={tts.sink or 'default'}")
     text = sys.argv[1] if len(sys.argv) > 1 else (
-        "Hola Marc. Soy Nyx, tu asistente cyberpunk. Esta es mi voz neuronal por la nube. ¿Suena natural?"
+        "Hola Marc. Soy Nyx, tu asistente cyberpunk. Esta es mi voz neuronal por la nube."
+        " ¿Suena natural?"
     )
     try:
         pcm = tts._gemini_pcm(text)

@@ -22,7 +22,8 @@ def test_ignores_thinking_tool_and_user():
 
 def test_joins_multiple_text_blocks():
     lines = [
-        '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"a "},{"type":"text","text":"b"}]}}'
+        '{"type":"assistant","message":{"role":"assistant","content":'
+        '[{"type":"text","text":"a "},{"type":"text","text":"b"}]}}'
     ]
     assert extract_last_assistant_text(lines) == "a b"
 

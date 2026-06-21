@@ -3,7 +3,7 @@
 Puro (solo stdlib) → testeable en CI.
 - `to_pango`: pinta **negrita**, *cursiva*/_cursiva_, `código`, ~~tachado~~, `# encabezados`,
   `- listas`, `1. listas`, `> citas`, ```bloques``` y [enlaces](url) como **Pango bien formado**
-  (escapa &<> antes; los marcadores sin cerrar quedan como texto literal; nunca produce markup roto).
+  (escapa &<> antes; los marcadores sin cerrar quedan como texto literal; nunca da markup roto).
 - `to_plain`: lo mismo pero devuelve texto LEGIBLE (sin marcas ni estructura) para el TTS.
 """
 
@@ -34,7 +34,8 @@ _HR = re.compile(r"^\s*([-*_])\1{2,}\s*$")
 
 def _inline_pango(seg: str) -> str:
     """Inline markdown → Pango sobre un segmento (escapa &<> primero). Los spans de código y
-    enlaces se ENMASCARAN con placeholders para que negrita/cursiva no los crucen → anidado válido."""
+    enlaces se ENMASCARAN con placeholders para que negrita/cursiva no los crucen
+    → anidado válido."""
     s = escape(seg)
     stash: list[str] = []
 

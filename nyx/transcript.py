@@ -9,7 +9,7 @@ Esquema verificado: cada línea es un registro JSON; los del asistente llevan
 from __future__ import annotations
 
 import json
-from typing import Iterable
+from collections.abc import Iterable
 
 
 def extract_last_assistant_text(lines: Iterable[str]) -> str | None:

@@ -131,7 +131,10 @@ def classify(tool_name: str, tool_input: dict, learned: set[str] | None = None) 
         return (decision, reason)
 
     if tool_name in _READ_TOOLS:
-        target = str(tool_input.get("file_path") or tool_input.get("path") or tool_input.get("pattern") or "")
+        target = str(
+            tool_input.get("file_path") or tool_input.get("path")
+            or tool_input.get("pattern") or ""
+        )
         if _SECRET.search(target):
             return ("deny", "lectura de un secreto")
         return ("allow", "solo lectura")
