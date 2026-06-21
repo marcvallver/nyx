@@ -23,22 +23,33 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Pango", "1.0")
 gi.require_version("PangoCairo", "1.0")
 gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import GLib, Gtk, Pango, PangoCairo, Gtk4LayerShell as LS  # noqa: E402
+from gi.repository import GLib, Gtk, Pango, PangoCairo  # noqa: E402
+from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
 from . import sparkle, theme  # noqa: E402
 
-TEAL = (0.333, 0.918, 0.831)
-WHITE_TEAL = (0.92, 1.0, 0.98)
-CYAN = (0.0, 0.9, 1.0)
+TEAL    = (0.333, 0.918, 0.831)
+RED     = (0.773, 0.0,   0.235)  # #c5003c — rojo de selección de la terminal Ghostty (mood alert)
+AMBER   = (1.0,   0.620, 0.0)    # #ff9e00 — ámbar/amarillo de la terminal (mood heated)
+CYAN    = (0.0, 0.9, 1.0)
 MAGENTA = (1.0, 0.15, 0.6)
 PANEL_BG = (0.05, 0.08, 0.15)
+# Aberración RGB de la textura retro, POR ESTADO, con el color UNIFICADO del mood: reposo = cian+
+# magenta (el azul de origen); alert = rojo; heated = ámbar.
+_ABERRATION = {
+    "alert":  (RED, RED),
+    "heated": (AMBER, AMBER),
+}
 
-# scale=tamaño del panel · alpha=opacidad · glitch=prob. de ráfaga/frame · glyph=alpha glifo
+# scale=tamaño del panel · alpha=opacidad · glitch=prob. de ráfaga/frame
+# glyph=alpha del glifo · color=tinte del borde/glow (teal normal, rojo alerta, naranja heated)
 STATES = {
-    "idle":      {"scale": 0.60, "alpha": 0.55, "glitch": 0.012, "glyph": 0.6},
-    "listening": {"scale": 0.78, "alpha": 0.85, "glitch": 0.035, "glyph": 0.85},
-    "thinking":  {"scale": 0.90, "alpha": 0.95, "glitch": 0.060, "glyph": 0.95},
-    "talking":   {"scale": 1.00, "alpha": 1.00, "glitch": 0.085, "glyph": 1.0},
+    "idle":      {"scale": 0.60, "alpha": 0.55, "glitch": 0.012, "glyph": 0.6,  "color": TEAL},
+    "listening": {"scale": 0.78, "alpha": 0.85, "glitch": 0.035, "glyph": 0.85, "color": TEAL},
+    "thinking":  {"scale": 0.90, "alpha": 0.95, "glitch": 0.060, "glyph": 0.95, "color": TEAL},
+    "talking":   {"scale": 1.00, "alpha": 1.00, "glitch": 0.085, "glyph": 1.0,  "color": TEAL},
+    "alert":     {"scale": 1.00, "alpha": 1.00, "glitch": 0.15,  "glyph": 1.0,  "color": RED},
+    "heated":    {"scale": 0.95, "alpha": 1.00, "glitch": 0.095, "glyph": 1.0,  "color": AMBER},
 }
 IDLE_GLYPH = "✳"
 BRACKET_PERIOD = 4.4  # ciclo lento del alargar/achicar de los corner-brackets
@@ -76,6 +87,7 @@ class Orb:
         self.s_scale = STATES["idle"]["scale"]
         self.s_alpha = STATES["idle"]["alpha"]
         self.s_glyph = STATES["idle"]["glyph"]
+        self.s_color: tuple = STATES["idle"]["color"]
         self._glitch_frames = 0
         self._timer: int | None = None
         w.set_visible(True)
@@ -107,9 +119,11 @@ class Orb:
 
     def _settled(self) -> bool:
         t = STATES[self.state]
+        tc = t["color"]
         return (abs(self.s_scale - t["scale"]) < 0.004
                 and abs(self.s_alpha - t["alpha"]) < 0.004
-                and abs(self.s_glyph - t["glyph"]) < 0.01)
+                and abs(self.s_glyph - t["glyph"]) < 0.01
+                and all(abs(self.s_color[i] - tc[i]) < 0.01 for i in range(3)))
 
     def _tick(self) -> bool:
         self.frame += 1
@@ -118,6 +132,13 @@ class Orb:
         self.s_scale += (t["scale"] - self.s_scale) * k
         self.s_alpha += (t["alpha"] - self.s_alpha) * k
         self.s_glyph += (t["glyph"] - self.s_glyph) * k
+        tc = t["color"]
+        kc = 0.10  # transición de color más lenta (más dramática)
+        self.s_color = (
+            self.s_color[0] + (tc[0] - self.s_color[0]) * kc,
+            self.s_color[1] + (tc[1] - self.s_color[1]) * kc,
+            self.s_color[2] + (tc[2] - self.s_color[2]) * kc,
+        )
         rm = self._reduced_motion()
         if not rm:
             if self._glitch_frames > 0:
@@ -158,9 +179,10 @@ class Orb:
         if dx > 0:  # franjas de aberración RGB
             cr.save()
             cr.set_operator(cairo.Operator.ADD)
-            cr.set_source_rgba(*CYAN, 0.45)
+            ab_a, ab_b = _ABERRATION.get(self.state, (CYAN, MAGENTA))
+            cr.set_source_rgba(*ab_a, 0.45)
             cr.mask_surface(surf, dx, jitter)
-            cr.set_source_rgba(*MAGENTA, 0.45)
+            cr.set_source_rgba(*ab_b, 0.45)
             cr.mask_surface(surf, -dx, -jitter)
             cr.restore()
         self._scanlines(cr, width, height)
@@ -172,10 +194,12 @@ class Orb:
         y = (h - ps) / 2
         rad = 7 * self.s_scale
         self._rrect(pcr, x, y, ps, ps, rad)
-        pcr.set_source_rgba(*PANEL_BG, 0.55 * a)
+        # relleno del tile teñido sutilmente por el mood (toda la ventanita se entera)
+        fill = tuple(PANEL_BG[i] * 0.8 + self.s_color[i] * 0.2 for i in range(3))
+        pcr.set_source_rgba(*fill, 0.6 * a)
         pcr.fill()
         self._rrect(pcr, x, y, ps, ps, rad)
-        pcr.set_source_rgba(*TEAL, 0.6 * a)
+        pcr.set_source_rgba(*self.s_color, 0.6 * a)
         pcr.set_line_width(1.2)
         pcr.stroke()
         self._brackets(pcr, x, y, ps, a)
@@ -194,7 +218,7 @@ class Orb:
         t = self.frame * self.FPS_MS / 1000.0
         osc = 0.5 - 0.5 * math.cos(2 * math.pi * t / BRACKET_PERIOD)
         n = ps * (0.16 + 0.12 * osc)
-        cr.set_source_rgba(*TEAL, 0.95 * a)
+        cr.set_source_rgba(*self.s_color, 0.95 * a)  # brackets en el color UNIFICADO del mood
         cr.set_line_width(2.0)
         for cx, cy, sx, sy in ((x, y, 1, 1), (x + ps, y, -1, 1),
                                (x, y + ps, 1, -1), (x + ps, y + ps, -1, -1)):
@@ -209,8 +233,10 @@ class Orb:
         desc = Pango.FontDescription("MesloLGL Nerd Font Mono")
         desc.set_weight(Pango.Weight.BOLD)
         glyph = self._glyph()
-        for size_mul, color, alpha in ((1.18, TEAL, self.s_glyph * 0.5 * a),
-                                       (1.0, WHITE_TEAL, self.s_glyph * a)):
+        # núcleo brillante teñido por el mood (aclarado hacia blanco) → el sparkle se pone rojo
+        core = tuple(self.s_color[i] + (1.0 - self.s_color[i]) * 0.55 for i in range(3))
+        for size_mul, color, alpha in ((1.18, self.s_color, self.s_glyph * 0.5 * a),
+                                       (1.0, core, self.s_glyph * a)):
             desc.set_absolute_size(font_px * size_mul * Pango.SCALE)
             layout.set_font_description(desc)
             layout.set_text(glyph, -1)
@@ -229,8 +255,8 @@ class Orb:
         cx, cy = w / 2, h / 2
         r = ps * 0.62
         g = cairo.RadialGradient(cx, cy, r * 0.2, cx, cy, r)
-        g.add_color_stop_rgba(0, *TEAL, 0.16 * self.s_alpha)
-        g.add_color_stop_rgba(1, *TEAL, 0.0)
+        g.add_color_stop_rgba(0, *self.s_color, 0.16 * self.s_alpha)
+        g.add_color_stop_rgba(1, *self.s_color, 0.0)
         cr.set_source(g)
         cr.paint()
         cr.restore()

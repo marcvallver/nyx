@@ -4,6 +4,12 @@ GTK de forma perezosa para que importar este módulo no requiera display."""
 TEAL = "#55ead4"
 GLOW_RGB = "85,234,212"
 YELLOW = "#f3e600"
+# Colores de mood = de la terminal Ghostty (cyberpunk-2077): rojo de selección (alert),
+# ámbar/amarillo (heated). Cada mood se aplica UNIFICADO a todas las superficies.
+RED = "#c5003c"
+RED_RGB = "197,0,60"
+AMBER = "#ff9e00"
+AMBER_RGB = "255,158,0"
 TEXT = "#d6fff7"
 MIDNIGHT = "rgba(13,20,38,0.92)"
 FONT = '"MesloLGL Nerd Font Mono", "DejaVu Sans Mono", monospace'
@@ -16,6 +22,14 @@ window {{ background: transparent; }}
   padding: 13px 17px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.40), 0 0 14px rgba({GLOW_RGB}, 0.16);
 }}
+.nyx-box-alert {{
+  background: rgba(34,13,28,0.93);  /* navy + ~12% crimson: tinte sutil, sigue oscuro y legible */
+  box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 24px rgba({RED_RGB}, 0.62);
+}}
+.nyx-box-heated {{
+  background: rgba(36,28,14,0.93);  /* navy + ~12% ámbar */
+  box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 24px rgba({AMBER_RGB}, 0.58);
+}}
 .nyx-spark {{
   color: {TEAL};
   font-size: 22px;
@@ -27,6 +41,22 @@ window {{ background: transparent; }}
   font-family: {FONT};
   font-size: 14px;
 }}
+.nyx-close {{
+  color: {TEAL};
+  opacity: 0.6;
+  font-size: 15px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 2px 2px 6px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  text-shadow: 0 0 7px rgba({GLOW_RGB}, 0.8);  /* glow en reposo (teal) */
+}}
+/* rojo más brillante para visibilidad (variante legible del mood, regla de Marc) + glow rojo */
+.nyx-close-alert {{ color: #ff2e5f; opacity: 0.95; text-shadow: 0 0 9px rgba({RED_RGB}, 1.0); }}
+.nyx-close-heated {{ color: {AMBER}; opacity: 0.95; text-shadow: 0 0 9px rgba({AMBER_RGB}, 0.95); }}
+.nyx-close:hover {{ opacity: 1.0; }}
 """
 
 
@@ -37,6 +67,12 @@ window {{ background: transparent; }}
   border-radius: 9px;
   padding: 10px 16px;
   box-shadow: 0 8px 28px rgba(0,0,0,0.40), 0 0 14px rgba({GLOW_RGB}, 0.16);
+}}
+.nyx-input-box-alert {{
+  box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 24px rgba({RED_RGB}, 0.62);
+}}
+.nyx-input-box-heated {{
+  box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 24px rgba({AMBER_RGB}, 0.58);
 }}
 .nyx-input-glyph {{ font-size: 20px; }}
 .nyx-input-entry, .nyx-input-entry > text {{

@@ -43,7 +43,13 @@ class InputBar:
         self.entry.connect("activate", self._submit)
         box.append(glyph)
         box.append(self.entry)
-        w.set_child(hud.hud_panel(box))
+        self._box = box
+        self._hud = hud.HudFrame()  # marco animado, recoloreable por mood
+        panel = Gtk.Overlay()
+        panel.set_child(box)
+        panel.add_overlay(self._hud)
+        panel.set_measure_overlay(self._hud, False)
+        w.set_child(panel)
 
         key = Gtk.EventControllerKey()
         key.connect("key-pressed", self._on_key)
@@ -61,6 +67,14 @@ class InputBar:
 
     def hide(self) -> None:
         self.win.set_visible(False)
+
+    def set_mood(self, mood: str) -> None:
+        """Tiñe la barra rápida igual que el resto de superficies (glow + marco HUD)."""
+        for cls in ("nyx-input-box-alert", "nyx-input-box-heated"):
+            self._box.remove_css_class(cls)
+        if mood in ("alert", "heated"):
+            self._box.add_css_class(f"nyx-input-box-{mood}")
+        self._hud.set_mood(mood)
 
     def _submit(self, entry):
         text = entry.get_text().strip()

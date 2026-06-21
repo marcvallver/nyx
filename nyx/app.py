@@ -4,6 +4,7 @@ barra de entrada, y la confirmación de acciones (Fase 4: híbrido con confirmac
 
 from __future__ import annotations
 
+import json
 import os
 
 import gi
@@ -19,11 +20,23 @@ from .backend import ClaudeBackend  # noqa: E402
 from .bubble import Bubble  # noqa: E402
 from .client import socket_path  # noqa: E402
 from .confirm import ConfirmPopup  # noqa: E402
+from .history import HistoryPanel  # noqa: E402
 from .inputbar import InputBar  # noqa: E402
 from .ipc import SocketServer  # noqa: E402
 from .voice import SttListener, TtsSpeaker  # noqa: E402
 
 ACTIVITY_FILE = os.path.expanduser("~/.cache/claude-thinking.active")
+CONFIG_FILE = os.path.expanduser("~/.config/nyx/config.json")
+_MOODS = ("normal", "alert", "heated")
+
+
+def _load_config() -> dict:
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 class NyxApp(Gtk.Application):
@@ -32,11 +45,16 @@ class NyxApp(Gtk.Application):
 
     def do_activate(self):
         self.hold()
+        self._config = _load_config()
         self._terminal_active = False
         self._nyx_state = "idle"
+        self._current_mood = "normal"
+        self._flash_id: int | None = None  # timer del flash de mood en `say`/notify/deny
+        self._turn_text = ""  # texto de Nyx del turno en curso (para el historial)
         self._listening = False
         self.orb = Orb(self)
         self.bubble = Bubble(self)
+        self.history = HistoryPanel(self)
         self.inputbar = InputBar(self, self.send_turn, self._dismiss_input)
         self.confirm_popup = ConfirmPopup(self)
         self.tts = TtsSpeaker()
@@ -44,6 +62,20 @@ class NyxApp(Gtk.Application):
         self.backend = ClaudeBackend(self._on_signal)
         self.server = SocketServer(socket_path(), self.handle)
         self.activity = ActivityWatcher(ACTIVITY_FILE, self._on_terminal_activity)
+        self.notifyd = None
+        if self._config.get("dbus_notifications"):  # opt-in: reemplaza al daemon de KDE
+            self._start_notifyd()
+
+    def _start_notifyd(self) -> None:
+        """Arranca el daemon D-Bus org.freedesktop.Notifications (opt-in por config)."""
+        try:
+            from .notifyd import NotificationServer
+
+            takeover = bool(self._config.get("dbus_notifications_takeover"))
+            self.notifyd = NotificationServer(self._on_dbus_notify, takeover=takeover)
+            self.notifyd.start()
+        except Exception:
+            self.notifyd = None  # nunca tumbar el daemon por un fallo de D-Bus
 
     # --- socket (handler diferido: debe llamar a reply) ---
     def handle(self, msg: dict, reply) -> None:
@@ -56,10 +88,25 @@ class NyxApp(Gtk.Application):
         elif op == "say":
             text = (msg.get("text") or "").strip()
             ttl = int(msg.get("ttl_ms") or 12000)
+            mood = msg.get("mood") if msg.get("mood") in _MOODS else "normal"
             if text:
-                GLib.idle_add(self.bubble.show_text, text, ttl)
+                GLib.idle_add(self.bubble.show_text, text, ttl, mood)
+                if mood != "normal":
+                    GLib.idle_add(self._flash_mood, mood, ttl)
                 self.tts.feed(text)  # cola thread-safe; habla si está activado
                 self.tts.flush()
+            reply({"ok": True})
+        elif op == "history":
+            GLib.idle_add(self.history.toggle)
+            reply({"ok": True})
+        elif op == "notify":
+            GLib.idle_add(
+                self._show_notification,
+                (msg.get("app") or "").strip(),
+                (msg.get("summary") or "").strip(),
+                (msg.get("body") or "").strip(),
+                int(msg.get("urgency") or 1),
+            )
             reply({"ok": True})
         elif op == "tts":
             if "on" in msg:  # set explícito (nyx-ctl tts on|off)
@@ -140,7 +187,9 @@ class NyxApp(Gtk.Application):
         self._refresh_orb()
 
     def _refresh_orb(self) -> None:
-        if self._nyx_state == "talking":
+        if self._nyx_state == "talking" and self._current_mood in ("alert", "heated"):
+            self.orb.set_state(self._current_mood)
+        elif self._nyx_state == "talking":
             self.orb.set_state("talking")
         elif self._nyx_state == "thinking" or self._terminal_active:
             self.orb.set_state("thinking")
@@ -148,6 +197,43 @@ class NyxApp(Gtk.Application):
             self.orb.set_state("listening")
         else:
             self.orb.set_state("idle")
+
+    def _flash_mood(self, mood: str, hold_ms: int) -> bool:
+        """Tiñe el orbe (alert/heated) un rato, sin depender del estado de turno.
+
+        Lo usan `say`/`notify`/deny: no hay un turno de chat que cierre el color, así
+        que se restaura solo tras `hold_ms` volviendo a lo que toque (idle/thinking…).
+        """
+        if self._flash_id is not None:
+            GLib.source_remove(self._flash_id)
+        self.orb.set_state(mood)
+        self.inputbar.set_mood(mood)  # la barra rápida también se tiñe
+        self._flash_id = GLib.timeout_add(max(1500, hold_ms), self._end_flash)
+        return False
+
+    def _end_flash(self) -> bool:
+        self._flash_id = None
+        self.inputbar.set_mood("normal")
+        self._refresh_orb()
+        return False
+
+    def _show_notification(self, app: str, summary: str, body: str, urgency: int) -> bool:
+        """Pinta una notificación como bocadillo estilizado (sustituto del nativo de KDE)."""
+        head = f"**{app}** · {summary}" if app and summary else (summary or app or "Notificación")
+        text = f"{head}\n{body}" if body else head
+        mood = "alert" if urgency >= 2 else "normal"  # crítica → rojo
+        ttl = 9000 if urgency >= 2 else 6000
+        self.bubble.show_text(text, ttl, mood)
+        if mood != "normal":
+            self._flash_mood(mood, ttl)
+        return False
+
+    def _on_dbus_notify(self, n: dict) -> None:
+        """Callback del daemon D-Bus (corre en el bucle GLib); marshalea a la UI."""
+        GLib.idle_add(
+            self._show_notification,
+            n.get("app", ""), n.get("summary", ""), n.get("body", ""), int(n.get("urgency", 1)),
+        )
 
     def _summon(self) -> bool:
         self._listening = True
@@ -197,6 +283,10 @@ class NyxApp(Gtk.Application):
             self.bubble.show_text("Espera, aún estoy con lo anterior…", 4000)
             return False
         self._listening = False
+        self._current_mood = "normal"
+        self.inputbar.set_mood("normal")
+        self._turn_text = ""
+        self.history.add_turn("operativo", text)
         self.tts.stop()  # corta cualquier voz anterior antes del nuevo turno
         self._set_nyx("thinking")
         self.bubble.start_stream()
@@ -204,13 +294,20 @@ class NyxApp(Gtk.Application):
         return False
 
     def _on_signal(self, sig) -> None:
-        if isinstance(sig, streamparse.TextDelta):
+        if isinstance(sig, streamparse.MoodSignal):
+            self._current_mood = sig.mood
+            self.bubble.set_mood(sig.mood)
+            self.inputbar.set_mood(sig.mood)
+            self._refresh_orb()
+        elif isinstance(sig, streamparse.TextDelta):
             self._set_nyx("talking")
+            self._turn_text += sig.text
             self.bubble.append(sig.text)
             self.tts.feed(sig.text)  # habla frase a frase (si TTS activado)
         elif isinstance(sig, streamparse.AssistantMessage):
             self._set_nyx("talking")
             if not self.bubble._buf.strip():  # fallback si no llegaron deltas
+                self._turn_text += sig.text
                 self.bubble.append(sig.text)
                 self.tts.feed(sig.text)
         elif isinstance(sig, streamparse.Result):
@@ -218,6 +315,10 @@ class NyxApp(Gtk.Application):
                 self.bubble.append(sig.text or "(error)")
             self.bubble.finalize()
             self.tts.flush()  # habla lo que quede del turno
+            if self._turn_text.strip():
+                self.history.add_turn("Nyx", self._turn_text, self._current_mood)
+            self._turn_text = ""
+            self.inputbar.set_mood("normal")
             self._set_nyx("idle")
 
 

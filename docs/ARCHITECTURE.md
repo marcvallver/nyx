@@ -69,9 +69,28 @@ inyectar allow/deny por cada tool-call es un hook **`PreToolUse`** en un `--sett
 
 ## IPC
 
-Socket UNIX `$XDG_RUNTIME_DIR/nyx.sock`, líneas JSON (`summon|say|confirm|set|status`), vigilado con
+Socket UNIX `$XDG_RUNTIME_DIR/nyx.sock`, líneas JSON
+(`summon|say|confirm|status|tts|listen|history|notify|hide|ask|quit`), vigilado con
 `Gio.SocketService`. Se conserva `~/.cache/claude-thinking.active` para las sesiones de terminal.
-Los verbos se diseñan finos para envolverlos luego en D-Bus `org.marc.Nyx1`.
+Los verbos se diseñan finos para envolverlos luego en D-Bus `org.marc.Nyx1`. `say` acepta
+`mood` (`normal|alert|heated`); `notify` lleva `app|summary|body|urgency`.
+
+## Estados emocionales · historial · notificaciones
+
+- **Estados emocionales (mood).** Nyx puede abrir su respuesta con un marcador
+  `⟨alert⟩` (peligro → rojo) o `⟨heated⟩` (personaje duro → naranja). `streamparse.py` lo
+  detecta y **consume** (no se muestra; tolera el marcador partido entre deltas) emitiendo un
+  `MoodSignal` antes del primer `TextDelta`. `app.py` tiñe orbe (`avatar.STATES["alert"/"heated"]`,
+  clave `color`) y bocadillo (`bubble.set_mood` → CSS `.nyx-box-alert/heated`). El gate
+  `nyx-permission-gate` dispara un `say` con `mood=alert` ante un **deny** (flash rojo automático).
+  La persona declara los marcadores en `~/.config/nyx/persona.md`.
+- **Historial.** `history.py` — panel layer-shell lateral (izquierda, `exclusive_zone`) que
+  acumula los turnos (operativo ⇄ Nyx) en memoria. Toggle: `nyx-ctl history` (op `history`),
+  atajo sugerido **Meta+H** (`net.local.nyx-history.desktop`). Coexiste con el bocadillo.
+- **Notificaciones.** `notifyd.py` implementa `org.freedesktop.Notifications` sobre
+  `Gio.DBusConnection` (sin deps, en el bucle GLib). **Opt-in** por config
+  (`dbus_notifications` + `_takeover`); cada notificación se pinta como bocadillo
+  (urgencia crítica → rojo). Helpers de parseo puros y testeados. Ver `dist/README.md`.
 
 ## Lifecycle
 

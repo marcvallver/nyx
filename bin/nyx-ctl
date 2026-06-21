@@ -112,11 +112,21 @@ def main() -> int:
     elif cmd == "listen_stop":
         ok = send({"op": "listen_stop"})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "history":
+        ok = send({"op": "history"})
+        print("ok (toggle historial)" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "notify":
+        app_name = args[1] if len(args) > 1 else ""
+        summary = args[2] if len(args) > 2 else ""
+        body = args[3] if len(args) > 3 else ""
+        ok = send({"op": "notify", "app": app_name, "summary": summary, "body": body})
+        print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
     elif cmd == "ping":
         print(send({"op": "ping"}))
     else:
         print(
-            "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>|tts [on|off]|ping",
+            "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>"
+            "|tts [on|off]|history|notify <app> <summary> [body]|ping",
             file=sys.stderr,
         )
         return 1

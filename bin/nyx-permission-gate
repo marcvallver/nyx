@@ -28,6 +28,15 @@ def emit(decision: str, reason: str) -> None:
     }))
 
 
+def _alert(reason: str) -> None:
+    """Best-effort: enciende a Nyx en rojo avisando del bloqueo. Nunca bloquea el deny."""
+    try:
+        send({"op": "say", "text": f"Bloqueado: {reason}", "mood": "alert", "ttl_ms": 4500},
+             timeout=0.4)
+    except Exception:
+        pass
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
@@ -37,8 +46,12 @@ def main() -> None:
     tool = data.get("tool_name", "")
     tin = data.get("tool_input") or {}
     decision, reason = policy.classify(tool, tin)
-    if decision in ("allow", "deny"):
-        emit(decision, reason)
+    if decision == "deny":
+        _alert(reason)  # flash rojo + bocadillo del bloqueo (auto-⟨alert⟩)
+        emit("deny", reason)
+        return
+    if decision == "allow":
+        emit("allow", reason)
         return
     # zona gris -> confirmación de Marc (espera larga; el hook tiene timeout 300s)
     cmd = tin.get("command") or json.dumps(tin, ensure_ascii=False)[:300]

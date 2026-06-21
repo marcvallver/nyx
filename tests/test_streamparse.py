@@ -3,6 +3,7 @@ import pathlib
 from nyx.streamparse import (
     AssistantMessage,
     Init,
+    MoodSignal,
     RateLimit,
     Result,
     Status,
@@ -139,3 +140,84 @@ def test_fixture_full_turn():
     assert result is not None and result.subtype == "success"
     assert result.text == "¡Hola! ¿En qué puedo ayudarte hoy?"
     assert result.duration_ms == 2504
+
+
+# --- MoodSignal: detección de marcadores ⟨alert⟩ / ⟨heated⟩ ---
+
+def _text_delta(text: str) -> dict:
+    return {
+        "type": "stream_event",
+        "event": {"type": "content_block_delta", "delta": {"type": "text_delta", "text": text}},
+    }
+
+
+def _start_msg() -> dict:
+    return {"type": "stream_event", "event": {"type": "message_start"}}
+
+
+def test_mood_alert_emitted_before_text():
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = p.feed(_text_delta("⟨alert⟩ Sistema comprometido"))
+    assert len(sigs) == 2
+    assert isinstance(sigs[0], MoodSignal) and sigs[0].mood == "alert"
+    assert isinstance(sigs[1], TextDelta) and sigs[1].text == "Sistema comprometido"
+
+
+def test_mood_heated_emitted_before_text():
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = p.feed(_text_delta("⟨heated⟩Muy bien, si insistes."))
+    assert isinstance(sigs[0], MoodSignal) and sigs[0].mood == "heated"
+    assert isinstance(sigs[1], TextDelta) and "insistes" in sigs[1].text
+
+
+def test_no_mood_marker_passes_through():
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = p.feed(_text_delta("Todo en orden."))
+    assert len(sigs) == 1 and isinstance(sigs[0], TextDelta)
+    assert sigs[0].text == "Todo en orden."
+
+
+def test_mood_marker_split_across_chunks():
+    """El marcador puede llegar partido en varios deltas."""
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = []
+    for chunk in ["⟨", "ale", "rt⟩ ", "texto"]:
+        sigs += p.feed(_text_delta(chunk))
+    moods = [s for s in sigs if isinstance(s, MoodSignal)]
+    texts = [s for s in sigs if isinstance(s, TextDelta)]
+    assert len(moods) == 1 and moods[0].mood == "alert"
+    assert "texto" in "".join(t.text for t in texts)
+
+
+def test_mood_marker_consumed_not_shown():
+    """El marcador no aparece en el texto resultante."""
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = p.feed(_text_delta("⟨alert⟩ Operativo, atención."))
+    combined = "".join(s.text for s in sigs if isinstance(s, TextDelta))
+    assert "⟨alert⟩" not in combined
+    assert "Operativo" in combined
+
+
+def test_unknown_angle_bracket_not_consumed():
+    """⟨foo⟩ que no es marcador conocido pasa como texto normal."""
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = p.feed(_text_delta("⟨foo⟩ hola"))
+    assert all(isinstance(s, TextDelta) for s in sigs)
+    combined = "".join(s.text for s in sigs)
+    assert "⟨foo⟩" in combined
+
+
+def test_mood_resets_between_turns():
+    """Nuevo turno (message_start) resetea la detección de mood."""
+    p = StreamParser()
+    p.feed(_start_msg())
+    p.feed(_text_delta("⟨alert⟩ primera"))
+    p.feed(_start_msg())  # nuevo turno
+    sigs = p.feed(_text_delta("normal"))
+    assert all(isinstance(s, TextDelta) for s in sigs)

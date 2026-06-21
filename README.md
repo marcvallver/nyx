@@ -76,11 +76,20 @@ nyx-ctl listen                   # push-to-talk: pulsa→habla→corta sola (át
 nyx-ctl tts [on|off]             # voz de salida: sin arg ALTERNA; on/off fija (átalo a Meta+M). Persiste
 nyx-ctl ask "<texto>"            # turno por CLI (sin barra)
 nyx-ctl say "<texto>"            # bocadillo (y voz si tts on)
+nyx-ctl history                  # alterna el panel de historial lateral (átalo a Meta+H)
+nyx-ctl notify "<app>" "<sum>" "<body>"  # notificación estilizada (bocadillo)
 nyx-ctl listen_stop | hide | ping  # cortar escucha · ocultar barra · diagnóstico
 ```
 
 Atajos sugeridos (System Settings → Atajos → *Orden o script*): **Meta+C** → `nyx-ctl summon`,
-**Meta+A** → `nyx-ctl listen`, **Meta+M** → `nyx-ctl tts` (conmuta la voz).
+**Meta+A** → `nyx-ctl listen`, **Meta+M** → `nyx-ctl tts` (conmuta la voz), **Meta+H** →
+`nyx-ctl history`.
+
+**Estados emocionales:** Nyx tiñe orbe y bocadillo de **rojo** (alerta/peligro) o **naranja**
+(personaje duro) cuando su respuesta abre con `⟨alert⟩`/`⟨heated⟩` (marcadores que se consumen,
+declarados en `persona.md`); un comando bloqueado por el gate dispara el rojo automático. El
+bocadillo lleva botón **×** para cerrarlo. **Notificaciones D-Bus** (sustituir al daemon de KDE):
+opt-in, ver [`dist/README.md`](dist/README.md).
 
 ## 🔧 Configuración
 

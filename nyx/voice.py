@@ -21,7 +21,7 @@ import sys
 import threading
 import urllib.request
 
-from . import markup
+from . import markup, phonetics
 
 VOICES_DIR = os.path.expanduser("~/.local/share/nyx/voices")
 DEFAULT_VOICE = os.path.join(VOICES_DIR, "es_ES-davefx-medium.onnx")
@@ -115,6 +115,7 @@ def _strip_md(text: str) -> str:
     s = _EMOJI.sub("", s)
     for pat, rep in _PRONUN:
         s = pat.sub(rep, s)
+    s = phonetics.respell(s)  # términos ingleses → grafía es-ES (solo voz)
     return _WS.sub(" ", s).strip()
 
 

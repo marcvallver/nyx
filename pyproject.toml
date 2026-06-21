@@ -23,7 +23,8 @@ classifiers = [
 # La lógica pura (streamparse, policy) no importa GTK y es testeable en CI.
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.6"]
+# ruff pineado: evita que CI derive a reglas nuevas con cada release (UP/E501…).
+dev = ["pytest>=8", "ruff>=0.15.18,<0.16"]
 
 [project.urls]
 Homepage = "https://github.com/marcvallver/nyx"
