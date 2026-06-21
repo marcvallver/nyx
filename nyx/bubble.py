@@ -7,8 +7,8 @@ suave (con catch-up si hay backlog), así la caja crece poco a poco en vez de pe
 saltos. Al terminar (y una vez revelado todo) se aplica el markdown y arranca el TTL.
 Fade-in/out con Gtk.Revealer.
 
-Interacción: el bocadillo NO es click-through — el botón × permite cerrarlo
-manualmente. El estado emocional (mood) cambia el color del borde vía CSS."""
+Interacción: el bocadillo es click-through SALVO el botón × (solo su rectángulo recibe
+clics; el resto pasa a la app de debajo). El mood cambia el color del borde vía CSS."""
 
 from __future__ import annotations
 
@@ -76,6 +76,7 @@ class Bubble:
         self.revealer.set_transition_duration(180)
         self.revealer.set_child(panel)
         w.set_child(self.revealer)
+        w.connect("realize", self._on_realize)
 
         self.win = w
         self._buf = ""        # texto recibido (objetivo)
@@ -84,6 +85,7 @@ class Bubble:
         self._ttl = 15000
         self._type_id: int | None = None
         self._fade_id: int | None = None
+        self._region_pending = False  # coalescing del recálculo de la región de input
         w.set_visible(False)
 
     def set_mood(self, mood: str) -> None:
@@ -103,6 +105,48 @@ class Bubble:
         if self._fade_id is not None:
             GLib.source_remove(self._fade_id)
             self._fade_id = None
+        self._schedule_region()
+
+    # --- click-through: solo el rectángulo del botón × recibe clics; el resto pasa de largo ---
+    def _on_realize(self, *_) -> None:
+        surf = self.win.get_surface()
+        if surf is not None:
+            try:  # recalcular la región cuando la superficie cambie de tamaño (el texto crece)
+                surf.connect("layout", lambda *_a: self._schedule_region())
+            except Exception:
+                pass
+        self._schedule_region()
+
+    def _schedule_region(self) -> None:
+        if not self._region_pending:
+            self._region_pending = True
+            GLib.idle_add(self._update_input_region)
+
+    def _update_input_region(self) -> bool:
+        self._region_pending = False
+        import cairo
+
+        surf = self.win.get_surface()
+        if surf is None:
+            return False
+        region = cairo.Region()  # vacía = todo click-through (fallback seguro)
+        try:
+            if self.win.get_visible():
+                ok, r = self._close_btn.compute_bounds(self.win)
+                if ok:
+                    pad = 4  # margen para que el × sea fácil de pulsar
+                    rect = cairo.RectangleInt(
+                        max(0, int(r.origin.x) - pad), max(0, int(r.origin.y) - pad),
+                        int(r.size.width) + 2 * pad, int(r.size.height) + 2 * pad,
+                    )
+                    region = cairo.Region(rect)
+        except Exception:
+            region = cairo.Region()
+        try:
+            surf.set_input_region(region)
+        except Exception:
+            pass
+        return False
 
     # --- streaming con tecleo ---
     def start_stream(self, mood: str = "normal") -> bool:
@@ -152,6 +196,7 @@ class Bubble:
             remaining = len(self._buf) - self._shown
             self._shown += max(1, min(4, remaining // 12))  # catch-up suave si hay backlog
             self.text.set_text(self._buf[: self._shown])
+            self._schedule_region()  # la caja se ensancha al crecer → reubicar la región del ×
             return True
         # alcanzado todo lo recibido
         if self._finalizing:
