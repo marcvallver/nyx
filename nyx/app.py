@@ -62,8 +62,17 @@ class NyxApp(Gtk.Application):
                 self.tts.flush()
             reply({"ok": True})
         elif op == "tts":
-            self.tts.set_enabled(bool(msg.get("on")))
-            reply({"ok": True, "tts": self.tts.enabled})
+            if "on" in msg:  # set explícito (nyx-ctl tts on|off)
+                self.tts.set_enabled(bool(msg.get("on")), persist=True)
+            else:  # sin "on" → alterna (atajo Meta+M / nyx-ctl tts)
+                self.tts.toggle()
+            on = self.tts.enabled
+            GLib.idle_add(self.bubble.show_text,
+                          "🔊 Voz activada" if on else "🔇 Voz en silencio", 2500)
+            if on:  # confirmación audible: Marc oye que el audio sale (y por qué salida)
+                self.tts.feed("Voz activada.")
+                self.tts.flush()
+            reply({"ok": True, "tts": on})
         elif op == "listen":
             GLib.idle_add(self._listen_toggle)
             reply({"ok": True})

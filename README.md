@@ -21,7 +21,8 @@ una ventanita HUD con glitch que **reacciona**, **chat por atajo** con respuesta
 - **Voz (estilo Siri):** **push-to-talk** (Meta+A) → STT local (faster-whisper, español) con **auto-stop**
   por VAD (callas → corta sola) → Claude → **TTS neuronal** (voz **es-ES** vía `edge-tts`, gratis y sin
   key; con Piper/espeak de fallback y **Gemini HD** opcional), sintetizado por **chunks con prefetch**
-  para hablar fluido y sin huecos. Salida de voz con **toggle**.
+  para hablar fluido y sin huecos. Salida de voz con **toggle (Meta+M)**: enciéndela/apágala cuando
+  quieras; la decisión **persiste** entre reinicios.
 - **Acciones con confirmación (híbrido seguro):** Nyx puede *ejecutar* cosas (abrir apps, comandos),
   pero un **gate de permisos** auto-permite lo seguro (lecturas, abrir apps), **deniega** lo peligroso
   (`rm -rf`, `sudo`, BD…) y para el resto abre un **popup de confirmación**.
@@ -72,14 +73,14 @@ nyx-ctl on
 nyx-ctl on|off|toggle|status     # daemon
 nyx-ctl summon                   # abre el chat (átalo a Meta+C en Atajos de KDE)
 nyx-ctl listen                   # push-to-talk: pulsa→habla→corta sola (átalo a Meta+A)
-nyx-ctl tts on|off               # voz de salida (que Nyx hable)
+nyx-ctl tts [on|off]             # voz de salida: sin arg ALTERNA; on/off fija (átalo a Meta+M). Persiste
 nyx-ctl ask "<texto>"            # turno por CLI (sin barra)
 nyx-ctl say "<texto>"            # bocadillo (y voz si tts on)
 nyx-ctl listen_stop | hide | ping  # cortar escucha · ocultar barra · diagnóstico
 ```
 
 Atajos sugeridos (System Settings → Atajos → *Orden o script*): **Meta+C** → `nyx-ctl summon`,
-**Meta+A** → `nyx-ctl listen`.
+**Meta+A** → `nyx-ctl listen`, **Meta+M** → `nyx-ctl tts` (conmuta la voz).
 
 ## 🔧 Configuración
 

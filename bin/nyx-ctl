@@ -3,8 +3,9 @@
 
   on|start    lanza el daemon (si no corre) + escribe autostart KDE
   off|stop    pide al daemon que se cierre (op quit) + quita autostart
-  toggle      alterna
+  toggle      alterna el daemon
   status      running | stopped
+  tts [on|off] voz: sin arg alterna; on/off fija (persiste en config.json)
   say <texto> muestra un bocadillo
   ping        diagnóstico
 
@@ -93,9 +94,18 @@ def main() -> int:
         ok = send({"op": "ask", "text": " ".join(args[1:])})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
     elif cmd == "tts":
-        on = bool(args[1:]) and args[1].lower() in ("on", "1", "true", "si", "sí")
-        ok = send({"op": "tts", "on": on})
-        print(("voz ON" if on else "voz OFF") if ok else "daemon no responde (¿nyx-ctl on?)")
+        arg = args[1].lower() if args[1:] else ""
+        if arg in ("on", "1", "true", "si", "sí"):
+            req = {"op": "tts", "on": True}
+        elif arg in ("off", "0", "false", "no"):
+            req = {"op": "tts", "on": False}
+        else:  # sin argumento (o "toggle") → alterna
+            req = {"op": "tts"}
+        resp = send(req)
+        if resp is None:
+            print("daemon no responde (¿nyx-ctl on?)")
+        else:  # estado REAL devuelto por el daemon (importa cuando es toggle)
+            print("voz ON" if resp.get("tts") else "voz OFF")
     elif cmd == "listen":
         ok = send({"op": "listen"})
         print("ok (toggle escucha)" if ok else "daemon no responde (¿nyx-ctl on?)")
@@ -106,7 +116,7 @@ def main() -> int:
         print(send({"op": "ping"}))
     else:
         print(
-            "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>|tts on|off|ping",
+            "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>|tts [on|off]|ping",
             file=sys.stderr,
         )
         return 1

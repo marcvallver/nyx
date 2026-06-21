@@ -62,6 +62,23 @@ def load_config() -> dict:
         return {}
 
 
+def save_config(updates: dict) -> None:
+    """Mezcla `updates` en config.json y reescribe ATÓMICAMENTE (tmp + os.replace), sin perder
+    las demás claves (sink, voz, key…). Lo usa el toggle de voz para que la decisión de Marc
+    persista entre reinicios del daemon. ensure_ascii=False conserva tildes (p.ej. gemini_style)."""
+    cfg = load_config()
+    cfg.update(updates)
+    tmp = CONFIG_PATH + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        os.replace(tmp, CONFIG_PATH)  # atómico: nunca deja el config a medias
+    except OSError as e:
+        print(f"nyx: no pude guardar config.json: {e}", file=sys.stderr)
+
+
 def _resolve_voice(voice: str) -> str:
     """Acepta ruta absoluta, nombre.onnx, o nombre pelado → ruta en VOICES_DIR."""
     if os.path.isabs(voice):
@@ -191,10 +208,20 @@ class TtsSpeaker:
         return ["aplay", "-q", "-r", r, "-f", "S16_LE", "-c", "1", "-t", "raw", "-"]
 
     # --- API (se llama desde el bucle GLib) ---
-    def set_enabled(self, on: bool) -> None:
+    def set_enabled(self, on: bool, persist: bool = False) -> None:
+        """Activa/silencia la voz. Al silenciar corta lo que esté sonando. Con persist=True
+        guarda la decisión en config.json (tts_enabled) para que sobreviva al reinicio."""
         self.enabled = bool(on)
-        if not on:
+        if not self.enabled:
             self.stop()
+        if persist:
+            save_config({"tts_enabled": self.enabled})
+
+    def toggle(self, persist: bool = True) -> bool:
+        """Alterna la voz y devuelve el nuevo estado. Persiste por defecto: 'cuando Marc decida'
+        significa que la decisión se respeta también tras reiniciar el daemon."""
+        self.set_enabled(not self.enabled, persist=persist)
+        return self.enabled
 
     def feed(self, chunk: str) -> None:
         """Acumula texto del streaming y encola CHUNKS GRANDES para sintetizar (mejor
