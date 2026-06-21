@@ -90,22 +90,19 @@ class NyxApp(Gtk.Application):
             ttl = int(msg.get("ttl_ms") or 12000)
             mood = msg.get("mood") if msg.get("mood") in _MOODS else "normal"
             if text:
-                GLib.idle_add(self.bubble.show_text, text, ttl, mood)
-                if mood != "normal":
-                    GLib.idle_add(self._flash_mood, mood, ttl)
-                self.tts.feed(text)  # cola thread-safe; habla si está activado
-                self.tts.flush()
+                GLib.idle_add(self._ephemeral, text, ttl, mood, True)
             reply({"ok": True})
         elif op == "history":
             GLib.idle_add(self.history.toggle)
             reply({"ok": True})
         elif op == "notify":
+            urg = msg.get("urgency")
             GLib.idle_add(
                 self._show_notification,
                 (msg.get("app") or "").strip(),
                 (msg.get("summary") or "").strip(),
                 (msg.get("body") or "").strip(),
-                int(msg.get("urgency") or 1),
+                1 if urg is None else int(urg),
             )
             reply({"ok": True})
         elif op == "tts":
@@ -187,6 +184,8 @@ class NyxApp(Gtk.Application):
         self._refresh_orb()
 
     def _refresh_orb(self) -> None:
+        if self._flash_id is not None:
+            return  # un flash de mood (say/notify/deny) manda el orbe hasta que expire su timer
         if self._nyx_state == "talking" and self._current_mood in ("alert", "heated"):
             self.orb.set_state(self._current_mood)
         elif self._nyx_state == "talking":
@@ -217,16 +216,28 @@ class NyxApp(Gtk.Application):
         self._refresh_orb()
         return False
 
+    def _ephemeral(self, text: str, ttl: int, mood: str, speak: bool = False) -> bool:
+        """Mensaje efímero (say/notify): si hay un turno en streaming NO pisa el bocadillo
+        (solo el flash del orbe), para no corromper la respuesta en curso."""
+        if self.backend.busy:
+            if mood != "normal":
+                self._flash_mood(mood, ttl)
+            return False
+        self.bubble.show_text(text, ttl, mood)
+        if mood != "normal":
+            self._flash_mood(mood, ttl)
+        if speak:
+            self.tts.feed(text)  # cola thread-safe; habla si está activado
+            self.tts.flush()
+        return False
+
     def _show_notification(self, app: str, summary: str, body: str, urgency: int) -> bool:
-        """Pinta una notificación como bocadillo estilizado (sustituto del nativo de KDE)."""
+        """Pinta una notificación como bocadillo efímero (sustituto del nativo de KDE)."""
         head = f"**{app}** · {summary}" if app and summary else (summary or app or "Notificación")
         text = f"{head}\n{body}" if body else head
         mood = "alert" if urgency >= 2 else "normal"  # crítica → rojo
         ttl = 9000 if urgency >= 2 else 6000
-        self.bubble.show_text(text, ttl, mood)
-        if mood != "normal":
-            self._flash_mood(mood, ttl)
-        return False
+        return self._ephemeral(text, ttl, mood)
 
     def _on_dbus_notify(self, n: dict) -> None:
         """Callback del daemon D-Bus (corre en el bucle GLib); marshalea a la UI."""
@@ -284,6 +295,9 @@ class NyxApp(Gtk.Application):
             return False
         self._listening = False
         self._current_mood = "normal"
+        if self._flash_id is not None:  # cancela un flash de mood pendiente (say/notify/deny)
+            GLib.source_remove(self._flash_id)
+            self._flash_id = None
         self.inputbar.set_mood("normal")
         self._turn_text = ""
         self.history.add_turn("operativo", text)

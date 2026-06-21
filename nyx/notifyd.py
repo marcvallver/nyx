@@ -58,7 +58,10 @@ INTROSPECTION_XML = """
 </node>
 """
 
-CAPABILITIES = ["body", "body-markup", "persistence"]
+# Solo "body": el cuerpo se muestra como texto (markdown ligero, no el HTML de la spec);
+# no anunciamos "body-markup" (escaparíamos el <b>/<a> de las apps) ni "persistence"
+# (los bocadillos son efímeros, sin cola ni almacenamiento).
+CAPABILITIES = ["body"]
 SERVER_NAME = "Nyx"
 SERVER_VENDOR = "marc"
 SERVER_VERSION = "1.0"

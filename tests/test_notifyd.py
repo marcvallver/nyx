@@ -54,9 +54,11 @@ def test_urgency_defaults_when_missing_or_invalid():
     assert urgency_from_hints(None) == 1  # robusto ante hints no-dict
 
 
-def test_capabilities_advertises_body_markup():
+def test_capabilities_honest():
     caps = capabilities()
-    assert "body" in caps and "body-markup" in caps
+    assert "body" in caps
+    # no anunciamos lo que no cumplimos: ni HTML markup ni persistencia
+    assert "body-markup" not in caps and "persistence" not in caps
     assert caps is not capabilities()  # devuelve copia (no expone la constante)
 
 

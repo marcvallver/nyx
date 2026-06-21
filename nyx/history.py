@@ -104,8 +104,9 @@ class HistoryPanel:
         if role == "operativo":
             label.add_css_class("nyx-history-user")
         else:
-            cls = f"nyx-history-nyx-{mood}" if mood in ("alert", "heated") else "nyx-history-nyx"
-            label.add_css_class(cls)
+            label.add_css_class("nyx-history-nyx")  # base: fuente/tamaño/padding
+            if mood in ("alert", "heated"):
+                label.add_css_class(f"nyx-history-nyx-{mood}")  # solo override de color
 
         self._listbox.append(label)
         if self._visible:
