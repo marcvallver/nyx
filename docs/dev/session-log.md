@@ -3,6 +3,13 @@
 Una entrada por sesión de trabajo (append-only, ~5 líneas). El detalle de arquitectura
 va a `docs/ARCHITECTURE.md`; aquí solo el rastro de qué se movió y qué viene después.
 
+## 2026-07-02 — Nyx v2: config + sesión core + notifs v2 + proactiva + panel (+ NyxMidnight en dotfiles)
+**Foco de hoy:** plan maestro "asistente de 10" aprobado por Marc — gestionable, con notificaciones de verdad, proactiva y guapa.
+**Avanzado:** config unificada v2 (`nyx/config.py`, migración auto + `nyx-ctl config` + op `reload`); moods `⟨glad⟩`/`⟨dim⟩` (Sanzo Wada #189/#41) + persona expresiva + mood persistente completo; **sesión core persistente** (`--resume` sobrevive reinicios, hilo en `chat.jsonl`, `nyx-ctl session`, eco de terminal compacto sin voz); unit systemd `Restart=on-failure` (kill -9 → resucita en 2s); notifs v2 (cola pura con rate-limit/DND/reglas, historial JSONL, botones de acción + iconos, `NotificationClosed` real); **capa proactiva** (`nyx/watchers/`: NudgeGate + sessions/repos/usb/system/eod — detectó los PR #550/#544 de Marc S en su primer pulso); centro de control (`nyx/control.py`, drawer derecho). 155 tests verdes. En dotfiles: scheme **NyxMidnight** aplicado (+accent teal), `themes/nyx/colors.toml`, `chk_nyx_palette` en drift, hooks de sesión.
+**Bloqueos:** spectacle/portal se colgó a mitad de sesión (rc=0 sin fichero, ni con `-f`) → capturas de moods/panel pendientes de verificación visual por Marc. `dist/` estaba en `.gitignore` (plantillas nunca versionadas) → corregido.
+**Decisiones:** JSON se queda (no TOML); espejo real de notifs imposible por spec (un dueño del bus name) → takeover opt-in y SOLO con unit instalada; glad/dim por doctrina Wada (partir de combos donde vive el teal); el daemon jamás ejecuta sudo (kitty + contraseña = 2ª confirmación); eco de terminal sin texto (decisión de Marc); panel al final para enseñarlo todo.
+**Siguiente sesión:** atar Meta+N (panel) en System Settings; decidir activación del takeover de notifs; track visual restante (wallpaper midnight, splash QML "Nyx boot sequence", SDDM overlay con snapshot, borde neón Klassy); test STT en vivo con micrófono (heredado del 19/06).
+
 ## 2026-06-21 — Toggle de voz + atajo Meta+M
 **Foco de hoy:** que Nyx hable o calle cuando Marc decida (toggle de voz).
 **Avanzado:** `nyx-ctl tts` sin arg ALTERNA (op IPC → `TtsSpeaker.toggle`), on/off fija; persiste en `~/.config/nyx/config.json` (escritura atómica); al activar, bocadillo + "Voz activada" audible. Atajo **Meta+M**. 4 tests de toggle/persistencia (51 verdes) + README. → nyx `475fcb3`, dotfiles `f990c3d`.

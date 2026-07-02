@@ -67,30 +67,94 @@ inyectar allow/deny por cada tool-call es un hook **`PreToolUse`** en un `--sett
 - El sparkle (`· ✢ ✳ ✶ ✻ ✽`, palíndromo de 12 frames a 120 ms) se factoriza a `sparkle.py` como
   única fuente de verdad y es el estado "thinking" del avatar.
 
+## Configuración (v2) — `nyx/config.py`
+
+Única fuente de verdad: `~/.config/nyx/config.json` con **schema v2 anidado**
+(`backend.model`, `ui.*` posiciones/TTL, `voice.*`, `notifications.*`, `terminal_echo`,
+`mood`, `watchers.*`). Migración automática del formato plano (con `.bak`), rutas
+punteadas, `validate()` que nunca lanza, escritura atómica. `nyx-ctl config
+list|get|set` + op `reload` (aplica en vivo lo aplicable y devuelve
+`applied`/`restart_needed`; sin file-monitor: entraría en bucle con las escrituras
+atómicas del propio daemon). El panel de control usa la MISMA ruta (config.update +
+reload).
+
 ## IPC
 
 Socket UNIX `$XDG_RUNTIME_DIR/nyx.sock`, líneas JSON
-(`summon|say|confirm|status|tts|listen|history|notify|hide|ask|quit`), vigilado con
-`Gio.SocketService`. Se conserva `~/.cache/claude-thinking.active` para las sesiones de terminal.
-Los verbos se diseñan finos para envolverlos luego en D-Bus `org.marc.Nyx1`. `say` acepta
-`mood` (`normal|alert|heated`); `notify` lleva `app|summary|body|urgency`.
+(`summon|say|confirm|status|tts|listen|history|notify|hide|ask|quit|reload|mood|
+config…|session_new|session_done|watchers|panel`), vigilado con `Gio.SocketService`.
+Se conserva `~/.cache/claude-thinking.active` para las sesiones de terminal.
+Los verbos se diseñan finos para envolverlos luego en D-Bus `org.marc.Nyx1`. `say`
+acepta `mood`; `notify` lleva `app|summary|body|urgency` y opcionalmente
+`icon|actions` (lista plana key,label como la spec).
+
+## Sesión core (persistente)
+
+El `--resume` del backend se persiste en `~/.local/state/nyx/session.json`: la
+conversación de Marc con Nyx **sobrevive a reinicios del daemon**. Si la sesión
+guardada ya no es recuperable, el turno se reintenta UNA vez desde cero sin perder
+el mensaje. El hilo se registra en `~/.local/state/nyx/chat.jsonl`
+([`nyx/chatlog.py`](../nyx/chatlog.py), puro; rotación a 1000) y el panel de
+historial lo recarga al arrancar. `nyx-ctl session show|new|open` (open = kitty con
+`claude --resume`; chatear ahí bifurca — la gestión real es vía Nyx). El hook
+`Stop` global (`nyx-bubble-capture`) ya NO manda texto de otras sesiones: emite
+`session_done` → eco compacto "⌁ sesión <repo>" sin voz (config `terminal_echo`),
+filtrando los turnos del propio backend por session_id.
 
 ## Estados emocionales · historial · notificaciones
 
-- **Estados emocionales (mood).** Nyx puede abrir su respuesta con un marcador
-  `⟨alert⟩` (peligro → rojo) o `⟨heated⟩` (personaje duro → naranja). `streamparse.py` lo
-  detecta y **consume** (no se muestra; tolera el marcador partido entre deltas) emitiendo un
-  `MoodSignal` antes del primer `TextDelta`. `app.py` tiñe orbe (`avatar.STATES["alert"/"heated"]`,
-  clave `color`) y bocadillo (`bubble.set_mood` → CSS `.nyx-box-alert/heated`). El gate
-  `nyx-permission-gate` dispara un `say` con `mood=alert` ante un **deny** (flash rojo automático).
-  La persona declara los marcadores en `~/.config/nyx/persona.md`.
-- **Historial.** `history.py` — panel layer-shell lateral (izquierda, `exclusive_zone`) que
-  acumula los turnos (operativo ⇄ Nyx) en memoria. Toggle: `nyx-ctl history` (op `history`),
-  atajo sugerido **Meta+H** (`net.local.nyx-history.desktop`). Coexiste con el bocadillo.
-- **Notificaciones.** `notifyd.py` implementa `org.freedesktop.Notifications` sobre
-  `Gio.DBusConnection` (sin deps, en el bucle GLib). **Opt-in** por config
-  (`dbus_notifications` + `_takeover`); cada notificación se pinta como bocadillo
-  (urgencia crítica → rojo). Helpers de parseo puros y testeados. Ver `dist/README.md`.
+- **Estados emocionales (mood).** Cuatro marcadores que Nyx abre en su respuesta:
+  `⟨alert⟩` (rojo `#c5003c`, peligro), `⟨heated⟩` (ámbar `#ff9e00`, carácter duro),
+  `⟨glad⟩` (Lemon Yellow `#f8ed43`, Sanzo Wada #189 — algo salió bien) y `⟨dim⟩`
+  (Dark Citrine `#8b835b`, Wada #41 — bajón sin drama). `theme.MOODS` es la lista
+  canónica. `streamparse.py` los detecta y **consume** (tolera marcador partido)
+  emitiendo `MoodSignal`; el mood tiñe TODAS las superficies (regla de la casa).
+  Además hay **mood persistente** (op `mood` / panel; clave `mood` del config):
+  tiñe el reposo y sobrevive reinicios; la decisión de estado del orbe es pura
+  ([`nyx/moodstate.py`](../nyx/moodstate.py)). El gate dispara `mood=alert` ante
+  un deny. La persona declara los marcadores en `~/.config/nyx/persona.md`.
+- **Historial.** `history.py` — panel layer-shell lateral (izquierda,
+  `exclusive_zone`): turnos (recargados de `chat.jsonl` al arrancar) +
+  notificaciones compactas (las silenciadas también, marcadas). Toggle Meta+H.
+- **Notificaciones v2.** `notifyd.py` implementa `org.freedesktop.Notifications`
+  (capabilities `actions|body|persistence`) — opt-in `notifications.enabled` +
+  `takeover`. Pipeline único (op `notify` y D-Bus):
+  [`nyx/notifqueue.py`](../nyx/notifqueue.py) puro — classify (crítica salta DND
+  y silencios por app), FIFO con prioridad crítica, replaces_id real, rate-limit
+  60 s con colapso "+N de app" — → bocadillo de una en una, con icono y hasta 3
+  botones (`ActionInvoked`; la región de input es la unión de widgets interactivos,
+  fallback = todo click-through). `NotificationClosed` se emite al ocultarse
+  (expired/dismissed). Historial persistente `~/.local/state/nyx/notifications.jsonl`
+  (`nyx-ctl notifs`, `dnd`). Ver `dist/README.md`; **no activar takeover sin la
+  unit systemd instalada**.
+
+## Proactividad — watchers (`nyx/watchers/`)
+
+Contrato: **la máquina vigila y propone, decide el humano**; un nudge se dispara
+UNA vez por estado nuevo (clave = huella del estado) y si Marc lo ignora, Nyx se
+calla. Todo opt-in por config (`watchers.<nombre>.enabled`).
+
+- `base.py` (puro): `Nudge`, `Action`, `NudgeGate` (cooldown + quiet-hours que
+  cruzan medianoche — los alert pasan; estado en `~/.cache/nyx/nudges.json`).
+- `WatcherManager`: registro dict + import perezoso; try/except en todo (ningún
+  watcher tumba el daemon); estado por op `watchers`.
+- Acciones ([`nyx/actions.py`](../nyx/actions.py)): SIEMPRE tras el popup
+  (`ConfirmPopup.show_proposal`, sin "siempre"). `terminal` abre kitty con el
+  comando preparado — **el daemon JAMÁS ejecuta sudo**, la contraseña es la 2ª
+  confirmación; `subprocess` solo con allowlist + veto de policy.
+- Primera hornada: `sessions` (colisiones de sesiones Claude en el mismo root git,
+  vía hooks → `bin/nyx-session-mark` + FileMonitor; worktrees no colisionan),
+  `repos` (pulso gh adaptativo 5/30 min de los PRs de fulgor: nuevo de Marc S /
+  verde-efectivo → propuesta de merge / rojo nuevo; backoff y silencio ante error),
+  `usb_backup` (UDisks2 → propuesta `bin/nyx-offsite` + recordatorio de N días),
+  `system` (kernel sin módulos tras upgrade; faillock ≥ umbral → reset propuesto),
+  `eod` (19:30: repos sucios → "/cierre-sesion pendiente").
+
+## Centro de control — `nyx/control.py`
+
+Drawer layer-shell anclado a la derecha (espejo del historial), HudFrame, teñido
+por el mood persistente. Estado (modelo/sesión/coste), interruptores en vivo,
+mood, modelo, watchers y acciones. Op `panel` / `nyx-ctl panel` (Meta+N sugerido).
 
 ## Lifecycle
 
