@@ -4,7 +4,10 @@ __pycache__/
 *.egg-info/
 .eggs/
 build/
-dist/
+# dist/ aquí NO son artefactos de build: son las plantillas de integración
+# (unit systemd, activación D-Bus). Solo se ignoran los artefactos de empaquetado.
+dist/*.whl
+dist/*.tar.gz
 .venv/
 venv/
 

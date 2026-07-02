@@ -1,0 +1,16 @@
+# Plantilla de unit systemd --user de Nyx. NO se instala sola: `nyx-ctl install`
+# renderiza @REPO@ con la ruta real del repo y la COPIA (fichero real, nunca
+# symlink: systemd no atraviesa /home/marc 0700) a ~/.config/systemd/user/.
+[Unit]
+Description=Nyx — asistente de escritorio (daemon GTK4 layer-shell)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so PYTHONPATH=@REPO@ /usr/bin/python3 -m nyx
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=plasma-workspace.target

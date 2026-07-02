@@ -1,0 +1,8 @@
+# Plantilla de activación D-Bus del notifyd. NO se instala sola:
+# `nyx-ctl install --notifyd` renderiza @REPO@ y la copia a
+# ~/.local/share/dbus-1/services/. SystemdService delega el arranque en la
+# unit nyx.service (evita el doble-arranque daemon + activación).
+[D-BUS Service]
+Name=org.freedesktop.Notifications
+Exec=/usr/bin/env LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so PYTHONPATH=@REPO@ /usr/bin/python3 -m nyx
+SystemdService=nyx.service
