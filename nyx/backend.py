@@ -32,6 +32,11 @@ _PERSONA = os.path.join(NYX_CONFIG, "persona.md")
 # estado de la sesión core (sobrevive reinicios del daemon)
 SESSION_STATE = os.path.expanduser("~/.local/state/nyx/session.json")
 
+# Las sesiones de claude son POR DIRECTORIO de proyecto: el subproceso debe correr
+# SIEMPRE desde el repo, o `--resume` no encuentra la sesión core (bajo systemd el
+# cwd del daemon era ~ y todos los turnos morían en error_during_execution).
+REPO_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
 
 def _read(path: str) -> str:
     try:
@@ -102,6 +107,7 @@ class ClaudeBackend:
         self._used_resume = False
         self._retried = False
         self._got_result = False
+        self._got_init = False
 
     def reset_session(self) -> None:
         """Empieza una sesión core nueva (op session_new): olvida el hilo anterior."""
@@ -144,6 +150,7 @@ class ClaudeBackend:
     def _spawn(self, prompt: str) -> bool:
         self._parser = streamparse.StreamParser()
         self._got_result = False
+        self._got_init = False
         try:
             # SubprocessLauncher para quitar TERM_PROGRAM: así el hook global de
             # sonido (condicionado a TERM_PROGRAM=ghostty) NO suena en los turnos de Nyx.
@@ -151,6 +158,7 @@ class ClaudeBackend:
                 Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE
             )
             launcher.unsetenv("TERM_PROGRAM")
+            launcher.set_cwd(REPO_DIR)  # sesiones por directorio: siempre desde el repo
             proc = launcher.spawnv(self._argv(prompt))
         except GLib.Error as e:
             self.busy = False
@@ -183,10 +191,21 @@ class ClaudeBackend:
             return
         for sig in self._parser.feed_line(line):
             if isinstance(sig, streamparse.Init) and sig.session_id:
+                self._got_init = True
                 if sig.session_id != self.session_id:
                     _save_session(sig.session_id)
                 self.session_id = sig.session_id
             elif isinstance(sig, streamparse.Result):
                 self._got_result = True
+                # "No conversation found with session ID": el error llega ANTES de
+                # arrancar (sin init). Reintenta el MISMO turno de cero UNA vez,
+                # sin enseñar este error a Marc ni perder su mensaje.
+                if (sig.is_error and self._used_resume
+                        and not self._got_init and not self._retried):
+                    self._retried = True
+                    self.session_id = None
+                    _clear_session()
+                    if self._spawn(self._prompt):
+                        return  # el stream viejo muere aquí; sigue el del retry
             self.on_signal(sig)
         stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self._on_line)

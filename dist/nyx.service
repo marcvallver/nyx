@@ -8,6 +8,9 @@ After=graphical-session.target
 
 [Service]
 Type=simple
+# WorkingDirectory: las sesiones de claude son por directorio de proyecto — el
+# backend debe correr desde el repo o --resume no encuentra la sesión core.
+WorkingDirectory=@REPO@
 ExecStart=/usr/bin/env LD_PRELOAD=/usr/lib/libgtk4-layer-shell.so PYTHONPATH=@REPO@ /usr/bin/python3 -m nyx
 Restart=on-failure
 RestartSec=2
