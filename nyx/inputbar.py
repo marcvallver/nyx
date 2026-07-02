@@ -79,9 +79,10 @@ class InputBar:
 
     def set_mood(self, mood: str) -> None:
         """Tiñe la barra rápida igual que el resto de superficies (glow + marco HUD)."""
-        for cls in ("nyx-input-box-alert", "nyx-input-box-heated"):
-            self._box.remove_css_class(cls)
-        if mood in ("alert", "heated"):
+        for m in theme.MOODS:
+            if m != "normal":
+                self._box.remove_css_class(f"nyx-input-box-{m}")
+        if mood != "normal" and mood in theme.MOODS:
             self._box.add_css_class(f"nyx-input-box-{mood}")
         self._hud.set_mood(mood)
 

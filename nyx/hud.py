@@ -18,7 +18,9 @@ from gi.repository import GLib, Gtk  # noqa: E402
 TEAL = (0.333, 0.918, 0.831)
 RED = (0.773, 0.0, 0.235)    # #c5003c — rojo de selección de Ghostty (mood alert)
 AMBER = (1.0, 0.620, 0.0)    # #ff9e00 — ámbar/amarillo de Ghostty (mood heated)
-MOOD_RGB = {"normal": TEAL, "alert": RED, "heated": AMBER}
+GLAD = (0.973, 0.929, 0.263)  # #f8ed43 — Lemon Yellow, Sanzo Wada #189 (mood glad)
+DIM = (0.545, 0.514, 0.357)   # #8b835b — Dark Citrine, Sanzo Wada #41 (mood dim)
+MOOD_RGB = {"normal": TEAL, "alert": RED, "heated": AMBER, "glad": GLAD, "dim": DIM}
 FPS_MS = 33          # animación de los brackets (~30 fps; basta para un pulso lento)
 PERIOD_S = 4.4       # ciclo del alargar/achicar (lento, tipo idle)
 

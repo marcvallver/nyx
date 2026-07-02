@@ -12,7 +12,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from . import config, policy, streamparse  # noqa: E402
+from . import config, policy, streamparse, theme  # noqa: E402
 from .activity import ActivityWatcher  # noqa: E402
 from .avatar import Orb  # noqa: E402
 from .backend import ClaudeBackend  # noqa: E402
@@ -25,7 +25,7 @@ from .ipc import SocketServer  # noqa: E402
 from .voice import SttListener, TtsSpeaker  # noqa: E402
 
 ACTIVITY_FILE = os.path.expanduser("~/.cache/claude-thinking.active")
-_MOODS = ("normal", "alert", "heated")
+_MOODS = theme.MOODS  # normal, alert, heated, glad, dim
 
 # qué cambios de config se aplican EN VIVO con el op `reload`; el resto de rutas
 # conocidas requiere reiniciar el daemon (voz/STT: workers ya arrancados)
@@ -234,7 +234,7 @@ class NyxApp(Gtk.Application):
     def _refresh_orb(self) -> None:
         if self._flash_id is not None:
             return  # un flash de mood (say/notify/deny) manda el orbe hasta que expire su timer
-        if self._nyx_state == "talking" and self._current_mood in ("alert", "heated"):
+        if self._nyx_state == "talking" and self._current_mood != "normal":
             self.orb.set_state(self._current_mood)
         elif self._nyx_state == "talking":
             self.orb.set_state("talking")
@@ -242,7 +242,7 @@ class NyxApp(Gtk.Application):
             self.orb.set_state("thinking")
         elif self._listening:
             self.orb.set_state("listening")
-        elif self._persistent_mood in ("alert", "heated"):
+        elif self._persistent_mood != "normal":
             self.orb.set_state(self._persistent_mood)
         else:
             self.orb.set_state("idle")

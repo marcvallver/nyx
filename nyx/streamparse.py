@@ -41,9 +41,10 @@ class MoodSignal:
     """Estado emocional declarado por Nyx al inicio del turno (marcador consumido).
 
     Lo emite el parser ANTES del primer `TextDelta` cuando la respuesta empieza con un
-    marcador `⟨alert⟩` (rojo, urgencia/peligro) o `⟨heated⟩` (naranja, personaje enfadado).
-    El marcador se elimina del texto mostrado. `mood` ∈ {"alert", "heated"} (nunca "normal":
-    la ausencia de señal ya significa normal).
+    marcador: `⟨alert⟩` (rojo, urgencia/peligro), `⟨heated⟩` (ámbar, carácter duro),
+    `⟨glad⟩` (amarillo limón, algo salió bien) o `⟨dim⟩` (citrino apagado, fallo sin
+    drama / modo bajo). El marcador se elimina del texto mostrado. `mood` nunca es
+    "normal": la ausencia de señal ya significa normal.
     """
 
     mood: str
@@ -119,10 +120,15 @@ Signal = (
 )
 
 
-# --- detección del estado emocional declarado (prefijo ⟨alert⟩ / ⟨heated⟩) ---
+# --- detección del estado emocional declarado (prefijo ⟨alert⟩/⟨heated⟩/⟨glad⟩/⟨dim⟩) ---
 # Nyx puede abrir el turno con un marcador para teñir avatar y bocadillo. Se consume
 # (no se muestra). Usa ⟨ ⟩ (U+27E8/U+27E9) para no chocar con < > ni con markdown.
-_MOOD_MARKERS = (("⟨alert⟩", "alert"), ("⟨heated⟩", "heated"))
+_MOOD_MARKERS = (
+    ("⟨alert⟩", "alert"),
+    ("⟨heated⟩", "heated"),
+    ("⟨glad⟩", "glad"),
+    ("⟨dim⟩", "dim"),
+)
 _MOOD_OPEN = "⟨"
 _MOOD_MAX = max(len(m) for m, _ in _MOOD_MARKERS)
 

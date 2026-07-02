@@ -4,15 +4,25 @@ GTK de forma perezosa para que importar este módulo no requiera display."""
 TEAL = "#55ead4"
 GLOW_RGB = "85,234,212"
 YELLOW = "#f3e600"
-# Colores de mood = de la terminal Ghostty (cyberpunk-2077): rojo de selección (alert),
-# ámbar/amarillo (heated). Cada mood se aplica UNIFICADO a todas las superficies.
+# Colores de mood — cada mood se aplica UNIFICADO a todas las superficies.
+# alert/heated = de la terminal Ghostty (cyberpunk-2077): rojo de selección y ámbar.
+# glad/dim = del diccionario de Sanzo Wada, partiendo de combos donde ya vive el teal:
+#   glad = Lemon Yellow (combo #189: Lemon Yellow + Deep Slate Olive + Venice Green≈teal)
+#   dim  = Dark Citrine (combo #41: Dark Citrine + Calamine Blue≈teal)
 RED = "#c5003c"
 RED_RGB = "197,0,60"
 AMBER = "#ff9e00"
 AMBER_RGB = "255,158,0"
+GLAD = "#f8ed43"
+GLAD_RGB = "248,237,67"
+DIM = "#8b835b"
+DIM_RGB = "139,131,91"
 TEXT = "#d6fff7"
 MIDNIGHT = "rgba(13,20,38,0.92)"
 FONT = '"MesloLGL Nerd Font Mono", "DejaVu Sans Mono", monospace'
+
+# la lista canónica de moods (el resto de módulos la importa de aquí)
+MOODS = ("normal", "alert", "heated", "glad", "dim")
 
 BUBBLE_CSS = f"""
 window {{ background: transparent; }}
@@ -29,6 +39,14 @@ window {{ background: transparent; }}
 .nyx-box-heated {{
   background: rgba(36,28,14,0.93);  /* navy + ~12% ámbar */
   box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 24px rgba({AMBER_RGB}, 0.58);
+}}
+.nyx-box-glad {{
+  background: rgba(30,38,28,0.93);  /* navy + Deep Slate Olive (compañero Wada del lemon) */
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45), 0 0 22px rgba({GLAD_RGB}, 0.45);
+}}
+.nyx-box-dim {{
+  background: rgba(22,24,22,0.93);  /* apagado: casi sin tinte, glow mínimo */
+  box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 10px rgba({DIM_RGB}, 0.25);
 }}
 .nyx-spark {{
   color: {TEAL};
@@ -56,6 +74,8 @@ window {{ background: transparent; }}
 /* rojo más brillante para visibilidad (variante legible del mood, regla de Marc) + glow rojo */
 .nyx-close-alert {{ color: #ff2e5f; opacity: 0.95; text-shadow: 0 0 9px rgba({RED_RGB}, 1.0); }}
 .nyx-close-heated {{ color: {AMBER}; opacity: 0.95; text-shadow: 0 0 9px rgba({AMBER_RGB}, 0.95); }}
+.nyx-close-glad {{ color: {GLAD}; opacity: 0.95; text-shadow: 0 0 9px rgba({GLAD_RGB}, 0.9); }}
+.nyx-close-dim {{ color: {DIM}; opacity: 0.8; text-shadow: 0 0 6px rgba({DIM_RGB}, 0.6); }}
 .nyx-close:hover {{ opacity: 1.0; }}
 """
 
@@ -73,6 +93,12 @@ window {{ background: transparent; }}
 }}
 .nyx-input-box-heated {{
   box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 24px rgba({AMBER_RGB}, 0.58);
+}}
+.nyx-input-box-glad {{
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45), 0 0 22px rgba({GLAD_RGB}, 0.45);
+}}
+.nyx-input-box-dim {{
+  box-shadow: 0 8px 28px rgba(0,0,0,0.50), 0 0 10px rgba({DIM_RGB}, 0.25);
 }}
 .nyx-input-glyph {{ font-size: 20px; }}
 .nyx-input-entry, .nyx-input-entry > text {{

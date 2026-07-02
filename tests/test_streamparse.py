@@ -203,6 +203,33 @@ def test_mood_marker_consumed_not_shown():
     assert "Operativo" in combined
 
 
+def test_mood_glad_emitted_before_text():
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = p.feed(_text_delta("⟨glad⟩ Tests verdes, Marc."))
+    assert isinstance(sigs[0], MoodSignal) and sigs[0].mood == "glad"
+    assert isinstance(sigs[1], TextDelta) and "verdes" in sigs[1].text
+
+
+def test_mood_dim_emitted_before_text():
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = p.feed(_text_delta("⟨dim⟩El build falló. Sin drama."))
+    assert isinstance(sigs[0], MoodSignal) and sigs[0].mood == "dim"
+    assert isinstance(sigs[1], TextDelta) and "build" in sigs[1].text
+
+
+def test_mood_dim_split_across_chunks():
+    """⟨dim⟩ es prefijo corto: no debe confundirse llegando partido."""
+    p = StreamParser()
+    p.feed(_start_msg())
+    sigs = []
+    for chunk in ["⟨d", "im⟩ ", "apagada"]:
+        sigs += p.feed(_text_delta(chunk))
+    moods = [s for s in sigs if isinstance(s, MoodSignal)]
+    assert len(moods) == 1 and moods[0].mood == "dim"
+
+
 def test_unknown_angle_bracket_not_consumed():
     """⟨foo⟩ que no es marcador conocido pasa como texto normal."""
     p = StreamParser()

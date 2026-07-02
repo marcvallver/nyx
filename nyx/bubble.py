@@ -21,7 +21,7 @@ from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
 from . import hud, markup, theme  # noqa: E402
 
-_VALID_MOODS = ("normal", "alert", "heated")
+_VALID_MOODS = theme.MOODS
 
 
 class Bubble:
@@ -97,11 +97,11 @@ class Bubble:
 
     def set_mood(self, mood: str) -> None:
         """Tiñe todo el bocadillo con el color del mood: glow + borde/brackets HUD + botón ×."""
-        for cls in ("nyx-box-alert", "nyx-box-heated"):
-            self._box.remove_css_class(cls)
-        for cls in ("nyx-close-alert", "nyx-close-heated"):
-            self._close_btn.remove_css_class(cls)
-        if mood in ("alert", "heated"):
+        for m in _VALID_MOODS:
+            if m != "normal":
+                self._box.remove_css_class(f"nyx-box-{m}")
+                self._close_btn.remove_css_class(f"nyx-close-{m}")
+        if mood != "normal" and mood in _VALID_MOODS:
             self._box.add_css_class(f"nyx-box-{mood}")
             self._close_btn.add_css_class(f"nyx-close-{mood}")
         self._hud.set_mood(mood)

@@ -39,6 +39,8 @@ _PANEL_CSS = f"""
 }}
 .nyx-history-nyx-alert  {{ color: #ff6666; }}
 .nyx-history-nyx-heated {{ color: #ff9e00; }}
+.nyx-history-nyx-glad   {{ color: {theme.GLAD}; }}
+.nyx-history-nyx-dim    {{ color: {theme.DIM}; }}
 """
 
 _WIDTH = 320
@@ -106,7 +108,7 @@ class HistoryPanel:
             label.add_css_class("nyx-history-user")
         else:
             label.add_css_class("nyx-history-nyx")  # base: fuente/tamaño/padding
-            if mood in ("alert", "heated"):
+            if mood != "normal" and mood in theme.MOODS:
                 label.add_css_class(f"nyx-history-nyx-{mood}")  # solo override de color
 
         self._listbox.append(label)

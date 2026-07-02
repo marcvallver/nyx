@@ -158,9 +158,10 @@ def main() -> int:
         ok = send({"op": "listen_stop"})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
     elif cmd == "mood":
+        from nyx.theme import MOODS
         arg = (args[1].lower() if args[1:] else "").strip()
-        if arg not in ("normal", "alert", "heated"):
-            print("uso: nyx-ctl mood <normal|alert|heated>", file=sys.stderr)
+        if arg not in MOODS:
+            print(f"uso: nyx-ctl mood <{'|'.join(MOODS)}>", file=sys.stderr)
             return 1
         resp = send({"op": "mood", "mood": arg})
         if resp is None:
@@ -189,7 +190,8 @@ def main() -> int:
     else:
         print(
             "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>"
-            "|mood <normal|alert|heated>|tts [on|off]|history|notify <app> <summary> [body]"
+            "|mood <normal|alert|heated|glad|dim>|tts [on|off]|history"
+            "|notify <app> <summary> [body]"
             "|config [list|get <ruta>|set <ruta> <valor>]|reload|ping",
             file=sys.stderr,
         )

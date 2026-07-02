@@ -31,18 +31,22 @@ from . import sparkle, theme  # noqa: E402
 TEAL    = (0.333, 0.918, 0.831)
 RED     = (0.773, 0.0,   0.235)  # #c5003c — rojo de selección de la terminal Ghostty (mood alert)
 AMBER   = (1.0,   0.620, 0.0)    # #ff9e00 — ámbar/amarillo de la terminal (mood heated)
+GLAD    = (0.973, 0.929, 0.263)  # #f8ed43 — Lemon Yellow, Sanzo Wada #189 (mood glad)
+DIM     = (0.545, 0.514, 0.357)  # #8b835b — Dark Citrine, Sanzo Wada #41 (mood dim)
 CYAN    = (0.0, 0.9, 1.0)
 MAGENTA = (1.0, 0.15, 0.6)
 PANEL_BG = (0.05, 0.08, 0.15)
 # Aberración RGB de la textura retro, POR ESTADO, con el color UNIFICADO del mood: reposo = cian+
-# magenta (el azul de origen); alert = rojo; heated = ámbar.
+# magenta (el azul de origen); los moods usan su propio color.
 _ABERRATION = {
     "alert":  (RED, RED),
     "heated": (AMBER, AMBER),
+    "glad":   (GLAD, GLAD),
+    "dim":    (DIM, DIM),
 }
 
 # scale=tamaño del panel · alpha=opacidad · glitch=prob. de ráfaga/frame
-# glyph=alpha del glifo · color=tinte del borde/glow (teal normal, rojo alerta, naranja heated)
+# glyph=alpha del glifo · color=tinte del borde/glow (teal normal; cada mood su color)
 STATES = {
     "idle":      {"scale": 0.60, "alpha": 0.55, "glitch": 0.012, "glyph": 0.6,  "color": TEAL},
     "listening": {"scale": 0.78, "alpha": 0.85, "glitch": 0.035, "glyph": 0.85, "color": TEAL},
@@ -50,6 +54,10 @@ STATES = {
     "talking":   {"scale": 1.00, "alpha": 1.00, "glitch": 0.085, "glyph": 1.0,  "color": TEAL},
     "alert":     {"scale": 1.00, "alpha": 1.00, "glitch": 0.15,  "glyph": 1.0,  "color": RED},
     "heated":    {"scale": 0.95, "alpha": 1.00, "glitch": 0.095, "glyph": 1.0,  "color": AMBER},
+    # glad: brillante y vivo pero sin la agresividad del alert (contenta, no en guardia)
+    "glad":      {"scale": 0.95, "alpha": 1.00, "glitch": 0.050, "glyph": 1.0,  "color": GLAD},
+    # dim: más pequeño y quieto que idle (apagada: fallo sin drama, modo bajo)
+    "dim":       {"scale": 0.55, "alpha": 0.45, "glitch": 0.006, "glyph": 0.5,  "color": DIM},
 }
 IDLE_GLYPH = "✳"
 BRACKET_PERIOD = 4.4  # ciclo lento del alargar/achicar de los corner-brackets
