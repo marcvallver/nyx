@@ -43,7 +43,18 @@ def test_plain_spanish_untouched():
     assert respell("todo en orden, operativo") == "todo en orden, operativo"
 
 
+def test_project_and_workflow_terms():
+    assert respell("el mood es glad") == "el múd es glad"
+    assert respell("un watcher vigila los watchers") == "un guócher vigila los guóchers"
+    assert respell("PR verde en GitHub, ¿merge?") == "PR verde en guítjab, ¿merch?"
+    assert respell("symbyosis y gymbros") == "simbiósis y yímbros"
+    assert respell("abre Ghostty o kitty en Wayland") == "abre góusti o kíti en güéiland"
+    assert respell("el backup offsite") == "el bácap ófsait"
+    assert respell("Claude usa el modelo sonnet") == "clód usa el modelo sónet"
+
+
 def test_no_homograph_in_dictionary():
     # guardarraíl: ningún término del diccionario es una palabra española común
-    espanol_comun = {"red", "son", "set", "fin", "van", "ten", "char", "mas", "tan", "pin"}
+    espanol_comun = {"red", "son", "set", "fin", "van", "ten", "char", "mas", "tan", "pin",
+                     "pace"}  # pace = forma de pacer (la app Pace se dice a la española)
     assert espanol_comun.isdisjoint(RESPELL.keys())
