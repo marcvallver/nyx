@@ -198,6 +198,8 @@ class NyxApp(Gtk.Application):
                 "summary": (msg.get("summary") or "").strip(),
                 "body": (msg.get("body") or "").strip(),
                 "urgency": 1 if urg is None else int(urg),
+                "icon": (msg.get("icon") or "").strip(),
+                "actions": msg.get("actions") or [],  # [key, label, …] como la spec
             }
             GLib.idle_add(self._notif_push, n)  # mismo pipeline que las D-Bus
             reply({"ok": True})
@@ -371,9 +373,25 @@ class NyxApp(Gtk.Application):
         urgency = int(n.get("urgency", 1))
         mood = "alert" if urgency >= 2 else "normal"  # crítica → rojo
         ttl = 9000 if urgency >= 2 else 6000
-        self.bubble.show_text(text, ttl, mood if mood != "normal" else self._persistent_mood)
+        shown_mood = mood if mood != "normal" else self._persistent_mood
+        pairs = notifqueue.action_pairs(n.get("actions"))
+        nid = int(n.get("id") or 0)
+        if pairs or n.get("icon"):
+            ttl = max(ttl, 12000) if pairs else ttl  # con botones, dar tiempo a decidir
+            self.bubble.show_notification(
+                text, ttl, shown_mood, icon=n.get("icon", ""), actions=pairs,
+                on_action=lambda key: self._notif_action(nid, key),
+            )
+        else:
+            self.bubble.show_text(text, ttl, shown_mood)
         if mood != "normal":
             self._flash_mood(mood, ttl)
+
+    def _notif_action(self, nid: int, key: str) -> None:
+        """Clic en un botón de acción: ActionInvoked por D-Bus y cierre (dismissed)."""
+        if self.notifyd and nid:
+            self.notifyd.action(nid, key)
+        self.bubble.dismiss()  # on_hidden emitirá NotificationClosed y drenará la cola
 
     def _on_bubble_hidden(self, dismissed: bool) -> None:
         """El bocadillo se ocultó (TTL o ×): cerrar la notificación visible por spec

@@ -56,9 +56,10 @@ def test_urgency_defaults_when_missing_or_invalid():
 
 def test_capabilities_honest():
     caps = capabilities()
-    assert "body" in caps
-    # no anunciamos lo que no cumplimos: ni HTML markup ni persistencia
-    assert "body-markup" not in caps and "persistence" not in caps
+    # anunciamos solo lo que cumplimos: botones de acción en el bocadillo, cuerpo
+    # de texto, y persistencia (cola + historial JSONL). HTML markup sigue fuera.
+    assert "actions" in caps and "body" in caps and "persistence" in caps
+    assert "body-markup" not in caps
     assert caps is not capabilities()  # devuelve copia (no expone la constante)
 
 

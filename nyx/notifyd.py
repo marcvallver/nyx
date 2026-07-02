@@ -58,10 +58,11 @@ INTROSPECTION_XML = """
 </node>
 """
 
-# Solo "body": el cuerpo se muestra como texto (markdown ligero, no el HTML de la spec);
-# no anunciamos "body-markup" (escaparíamos el <b>/<a> de las apps) ni "persistence"
-# (los bocadillos son efímeros, sin cola ni almacenamiento).
-CAPABILITIES = ["body"]
+# "body": el cuerpo se muestra como texto (markdown ligero, no el HTML de la spec;
+# no anunciamos "body-markup" porque escaparíamos el <b>/<a> de las apps).
+# "actions": botones en el bocadillo (máx 3) que emiten ActionInvoked.
+# "persistence": hay cola + historial en ~/.local/state/nyx/notifications.jsonl.
+CAPABILITIES = ["actions", "body", "persistence"]
 SERVER_NAME = "Nyx"
 SERVER_VENDOR = "marc"
 SERVER_VERSION = "1.0"
@@ -205,6 +206,21 @@ class NotificationServer:
                 invocation.return_dbus_error("org.freedesktop.DBus.Error.Failed", "error interno")
             except Exception:
                 pass
+
+    def action(self, nid: int, key: str) -> None:
+        """Emite ActionInvoked (clic en un botón de acción del bocadillo). El
+        NotificationClosed correspondiente lo emite el flujo de ocultado."""
+        if self._conn is None:
+            return
+        from gi.repository import GLib
+
+        try:
+            self._conn.emit_signal(
+                None, OBJECT_PATH, INTERFACE, "ActionInvoked",
+                GLib.Variant("(us)", (int(nid), str(key))),
+            )
+        except Exception:
+            pass
 
     def close(self, nid: int, reason: int = CLOSE_REASON_CLOSED) -> None:
         """Emite NotificationClosed (al cerrar/expirar una notificación)."""

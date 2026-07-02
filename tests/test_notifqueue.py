@@ -98,6 +98,26 @@ def test_pending_count():
     assert q.pending_count() == 2
 
 
+# --- action_pairs (spec: lista plana key,label,key,label…) ---
+def test_action_pairs_basic():
+    assert notifqueue.action_pairs(["ok", "Aceptar", "no", "Rechazar"]) == [
+        ("ok", "Aceptar"), ("no", "Rechazar")]
+
+
+def test_action_pairs_odd_and_empty():
+    assert notifqueue.action_pairs(["default", "Abrir", "suelto"]) == [("default", "Abrir")]
+    assert notifqueue.action_pairs([]) == []
+    assert notifqueue.action_pairs(None) == []
+    assert notifqueue.action_pairs(["", "sin-key", "k", ""]) == []
+
+
+def test_action_pairs_caps_at_three():
+    flat = []
+    for i in range(5):
+        flat += [f"k{i}", f"L{i}"]
+    assert len(notifqueue.action_pairs(flat)) == 3
+
+
 # --- historial persistente ---
 def test_log_and_load_roundtrip(tmp_path):
     p = str(tmp_path / "notifs.jsonl")

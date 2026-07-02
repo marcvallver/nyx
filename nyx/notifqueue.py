@@ -18,6 +18,20 @@ SILENCE = "silence"
 NOTIF_LOG = os.path.expanduser("~/.local/state/nyx/notifications.jsonl")
 
 
+def action_pairs(actions: list | None, max_actions: int = 3) -> list[tuple[str, str]]:
+    """Lista plana de la spec [key1, label1, key2, label2, …] → pares (key, label).
+    Se descarta un elemento suelto final y los pares sin key o sin label."""
+    out: list[tuple[str, str]] = []
+    items = [str(a) for a in (actions or [])]
+    for i in range(0, len(items) - 1, 2):
+        key, label = items[i].strip(), items[i + 1].strip()
+        if key and label:
+            out.append((key, label))
+        if len(out) >= max_actions:
+            break
+    return out
+
+
 def classify(n: dict, rules: dict | None = None, dnd: bool = False) -> str:
     """SHOW o SILENCE. Crítica (urgency>=2) siempre SHOW; luego DND; luego
     reglas por app ({"Spotify": "silence"})."""

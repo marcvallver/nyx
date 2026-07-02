@@ -12,6 +12,8 @@ clics; el resto pasa a la app de debajo). El mood cambia el color del borde vía
 
 from __future__ import annotations
 
+import os
+
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -58,17 +60,28 @@ class Bubble:
         close_btn.connect("clicked", lambda _: self._cancel_and_hide())
         self._close_btn = close_btn
 
-        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        self._icon = Gtk.Image()  # icono de app (notificaciones)
+        self._icon.set_pixel_size(18)
+        self._icon.set_visible(False)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        header.append(self._icon)
         spacer = Gtk.Box()
         spacer.set_hexpand(True)
         header.append(spacer)
         header.append(close_btn)
 
+        self._actions_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._actions_box.set_visible(False)
+        self._actions_box.set_margin_top(6)
+
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         vbox.add_css_class("nyx-box")
         vbox.append(header)
         vbox.append(self.text)
+        vbox.append(self._actions_box)
         self._box = vbox
+        self._interactive: list[Gtk.Widget] = [close_btn]  # widgets que SÍ reciben clics
 
         self._hud = hud.HudFrame()  # marco animado; recoloreable por mood
         panel = Gtk.Overlay()
@@ -117,7 +130,49 @@ class Bubble:
             self._fade_id = None
         self._schedule_region()
 
-    # --- click-through: solo el rectángulo del botón × recibe clics; el resto pasa de largo ---
+    # --- notificaciones: icono de app + botones de acción ---
+    def _set_icon(self, icon: str) -> None:
+        icon = (icon or "").strip().removeprefix("file://")
+        if icon and os.path.isabs(icon) and os.path.exists(icon):
+            self._icon.set_from_file(icon)
+            self._icon.set_visible(True)
+        elif icon:
+            self._icon.set_from_icon_name(icon)  # icon-name temático (spec)
+            self._icon.set_visible(True)
+        else:
+            self._icon.set_visible(False)
+
+    def _set_actions(self, pairs, on_action) -> None:
+        while (child := self._actions_box.get_first_child()) is not None:
+            self._actions_box.remove(child)
+        self._interactive = [self._close_btn]
+        for key, label in pairs:
+            btn = Gtk.Button(label=label)
+            btn.add_css_class("nyx-notif-action")
+            if on_action is not None:
+                btn.connect("clicked", lambda _w, k=key: on_action(k))
+            self._actions_box.append(btn)
+            self._interactive.append(btn)
+        self._actions_box.set_visible(bool(pairs))
+        self._schedule_region()
+
+    def show_notification(self, text: str, ttl_ms: int, mood: str = "normal",
+                          icon: str = "", actions=(), on_action=None) -> bool:
+        """Notificación con icono y botones de acción (máx 3). Los botones y el ×
+        reciben clics; el resto del bocadillo sigue siendo click-through."""
+        self.start_stream(mood)
+        self._set_icon(icon)
+        self._set_actions(actions, on_action)
+        self._buf = text
+        self.finalize(ttl_ms)
+        return False
+
+    def dismiss(self) -> None:
+        """Cierre programático equivalente al × (cuenta como dismissed)."""
+        self._cancel_and_hide()
+
+    # --- click-through: solo los widgets interactivos (× + botones de acción) reciben
+    # clics; el resto pasa de largo ---
     def _on_realize(self, *_) -> None:
         surf = self.win.get_surface()
         if surf is not None:
@@ -142,14 +197,17 @@ class Bubble:
         region = cairo.Region()  # vacía = todo click-through (fallback seguro)
         try:
             if self.win.get_visible():
-                ok, r = self._close_btn.compute_bounds(self.win)
-                if ok:
-                    pad = 4  # margen para que el × sea fácil de pulsar
-                    rect = cairo.RectangleInt(
+                for widget in self._interactive:  # unión: × + botones de acción visibles
+                    if not widget.get_visible():
+                        continue
+                    ok, r = widget.compute_bounds(self.win)
+                    if not ok:
+                        continue
+                    pad = 4  # margen para que el botón sea fácil de pulsar
+                    region.union(cairo.RectangleInt(
                         max(0, int(r.origin.x) - pad), max(0, int(r.origin.y) - pad),
                         int(r.size.width) + 2 * pad, int(r.size.height) + 2 * pad,
-                    )
-                    region = cairo.Region(rect)
+                    ))
         except Exception:
             region = cairo.Region()
         try:
@@ -168,6 +226,8 @@ class Bubble:
         self._finalizing = False
         self.text.set_text("")
         self._stop_type()
+        self._set_icon("")  # el chat no hereda el chrome de una notificación previa
+        self._set_actions((), None)
         self.set_mood(mood)
         return False  # usable como callback de GLib.idle_add
 

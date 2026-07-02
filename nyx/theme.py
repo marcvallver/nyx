@@ -77,6 +77,18 @@ window {{ background: transparent; }}
 .nyx-close-glad {{ color: {GLAD}; opacity: 0.95; text-shadow: 0 0 9px rgba({GLAD_RGB}, 0.9); }}
 .nyx-close-dim {{ color: {DIM}; opacity: 0.8; text-shadow: 0 0 6px rgba({DIM_RGB}, 0.6); }}
 .nyx-close:hover {{ opacity: 1.0; }}
+.nyx-notif-action {{
+  background: rgba({GLOW_RGB}, 0.08);
+  color: {TEAL};
+  font-family: {FONT};
+  font-size: 12px;
+  border: 1px solid rgba({GLOW_RGB}, 0.45);
+  border-radius: 6px;
+  padding: 2px 10px;
+  min-height: 0;
+  box-shadow: none;
+}}
+.nyx-notif-action:hover {{ background: rgba({GLOW_RGB}, 0.20); }}
 """
 
 
