@@ -158,6 +158,12 @@ class ControlPanel:
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_child(box)
+        # mini marco interior: sin él, el clip del scroll corta el contenido
+        # a ras de los brackets en la esquina inferior (feedback de Marc)
+        scroll.set_margin_top(6)
+        scroll.set_margin_bottom(14)
+        scroll.set_margin_start(6)
+        scroll.set_margin_end(6)
 
         # inset 4: el clip redondeado de la ventana (radius 8) no toca los brackets
         self._hud = hud.HudFrame(inset=4.0, radius=8.0)

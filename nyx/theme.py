@@ -131,6 +131,8 @@ TITLEBAR_CSS = f"""
    casar con las ventanas del sistema. Los brackets del HudFrame van con inset
    extra en el panel para que el clip redondeado no los corte. */
 window.nyx-win, window.nyx-win decoration {{ border-radius: 8px; }}
+/* mismo fondo que .nyx-panel: los márgenes interiores del scroll no desentonan */
+window.nyx-win {{ background: #0a0f1e; }}
 .nyx-titlebar {{
   background: #090e1b;
   border-bottom: 1px solid rgba({GLOW_RGB}, 0.35);

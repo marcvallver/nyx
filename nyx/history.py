@@ -68,6 +68,8 @@ class HistoryPanel:
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_vexpand(True)
         scroll.set_child(self._listbox)
+        scroll.set_margin_top(4)
+        scroll.set_margin_bottom(12)  # aire: el clip no corta a ras del borde
         self._scroll = scroll
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
