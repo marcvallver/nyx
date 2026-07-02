@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """nyx-ctl — control del daemon de Nyx.
 
-  on|start    lanza el daemon (si no corre) + escribe autostart KDE
-  off|stop    pide al daemon que se cierre (op quit) + quita autostart
-  restart     reinicio limpio (quit + espera + start)
+  on|start    lanza el daemon (systemd si hay unit; si no, spawn + autostart KDE)
+  off|stop    pide al daemon que se cierre (op quit)
+  restart     reinicio limpio
+  install     instala la unit systemd --user (--notifyd: + activación D-Bus)
+  uninstall   retira unit y activación D-Bus
   toggle      alterna el daemon
   status      estado completo (modelo, sesión, mood, voz, coste…)
   tts [on|off] voz: sin arg alterna; on/off fija (persiste en config.json)
@@ -33,6 +35,53 @@ from nyx.client import daemon_running, send  # noqa: E402
 PRELOAD = "/usr/lib/libgtk4-layer-shell.so"
 AUTOSTART = os.path.expanduser("~/.config/autostart/nyx.desktop")
 LOG = os.path.expanduser("~/.cache/nyx/daemon.log")
+UNIT = os.path.expanduser("~/.config/systemd/user/nyx.service")
+DBUS_SERVICE = os.path.expanduser(
+    "~/.local/share/dbus-1/services/org.freedesktop.Notifications.service")
+
+
+def unit_installed() -> bool:
+    return os.path.exists(UNIT)
+
+
+def _render_template(name: str) -> str:
+    """Lee dist/<name> y sustituye @REPO@ por la ruta real del repo."""
+    with open(os.path.join(REPO, "dist", name), encoding="utf-8") as f:
+        return f.read().replace("@REPO@", REPO)
+
+
+def install(notifyd: bool = False) -> None:
+    """Instala la unit systemd --user (COPIA real, nunca symlink: systemd no
+    atraviesa /home/marc 0700) y reemplaza el autostart .desktop. Con --notifyd,
+    instala también la activación D-Bus de org.freedesktop.Notifications."""
+    os.makedirs(os.path.dirname(UNIT), exist_ok=True)
+    with open(UNIT, "w", encoding="utf-8") as f:
+        f.write(_render_template("nyx.service"))
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "--user", "enable", "nyx.service"],
+                   check=False, capture_output=True)
+    if os.path.exists(AUTOSTART):  # reemplazo, no convivencia (dos lanzadores = carreras)
+        os.remove(AUTOSTART)
+        print("autostart .desktop retirado (lo sustituye la unit)")
+    print(f"unit instalada y habilitada: {UNIT}")
+    if notifyd:
+        os.makedirs(os.path.dirname(DBUS_SERVICE), exist_ok=True)
+        with open(DBUS_SERVICE, "w", encoding="utf-8") as f:
+            f.write(_render_template("org.freedesktop.Notifications.service"))
+        print(f"activación D-Bus del notifyd instalada: {DBUS_SERVICE}")
+        print("recuerda: nyx-ctl config set notifications.enabled true (+ takeover)")
+    print("arranca con: systemctl --user start nyx  (o nyx-ctl on)")
+
+
+def uninstall() -> None:
+    subprocess.run(["systemctl", "--user", "disable", "--now", "nyx.service"],
+                   check=False, capture_output=True)
+    for path, label in ((UNIT, "unit"), (DBUS_SERVICE, "activación D-Bus")):
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"{label} retirada: {path}")
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    print("hecho; `nyx-ctl on` vuelve al modo autostart .desktop")
 
 
 def _write_autostart() -> None:
@@ -51,29 +100,33 @@ def _write_autostart() -> None:
 def start() -> None:
     if daemon_running():
         print("nyx: ya en marcha")
-    else:
-        os.makedirs(os.path.dirname(LOG), exist_ok=True)
-        env = os.environ.copy()
-        env["LD_PRELOAD"] = PRELOAD
-        env["PYTHONPATH"] = REPO + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-        with open(LOG, "a") as logf:
-            subprocess.Popen(
-                [sys.executable, "-m", "nyx"],
-                cwd=REPO,
-                env=env,
-                stdout=logf,
-                stderr=logf,
-                stdin=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        print("nyx: ON")
+        return
+    if unit_installed():
+        subprocess.run(["systemctl", "--user", "start", "nyx.service"], check=False)
+        print("nyx: ON (systemd)")
+        return
+    os.makedirs(os.path.dirname(LOG), exist_ok=True)
+    env = os.environ.copy()
+    env["LD_PRELOAD"] = PRELOAD
+    env["PYTHONPATH"] = REPO + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    with open(LOG, "a") as logf:
+        subprocess.Popen(
+            [sys.executable, "-m", "nyx"],
+            cwd=REPO,
+            env=env,
+            stdout=logf,
+            stderr=logf,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    print("nyx: ON")
     _write_autostart()
 
 
 def stop() -> None:
     if daemon_running():
-        send({"op": "quit"})
-    if os.path.exists(AUTOSTART):
+        send({"op": "quit"})  # cierre limpio (exit 0 → Restart=on-failure no relanza)
+    if not unit_installed() and os.path.exists(AUTOSTART):
         os.remove(AUTOSTART)
     print("nyx: OFF")
 
@@ -82,6 +135,10 @@ def restart() -> None:
     """Reinicio limpio: quit + esperar a que muera + start (sin tocar el autostart)."""
     import time
 
+    if unit_installed():
+        subprocess.run(["systemctl", "--user", "restart", "nyx.service"], check=False)
+        print("nyx: reiniciado (systemd)")
+        return
     if daemon_running():
         send({"op": "quit"})
         for _ in range(50):  # hasta 5 s a que suelte el socket
@@ -95,10 +152,14 @@ def restart() -> None:
 
 
 def logs(follow: bool = False) -> int:
-    if not os.path.exists(LOG):
+    if unit_installed():
+        cmd = ["journalctl", "--user", "-u", "nyx.service", "-n", "40"]
+        cmd += ["-f"] if follow else ["--no-pager"]
+    elif os.path.exists(LOG):
+        cmd = ["tail", "-n", "40"] + (["-f"] if follow else []) + [LOG]
+    else:
         print(f"sin log todavía ({LOG})", file=sys.stderr)
         return 1
-    cmd = ["tail", "-n", "40"] + (["-f"] if follow else []) + [LOG]
     try:
         return subprocess.call(cmd)
     except KeyboardInterrupt:
@@ -166,8 +227,25 @@ def doctor() -> int:
     )
     check(owner.returncode == 0, "org.freedesktop.Notifications",
           "con dueño (KDE o Nyx)" if owner.returncode == 0 else "sin dueño")
-    check(os.path.exists(AUTOSTART), "autostart",
-          AUTOSTART if os.path.exists(AUTOSTART) else "sin autostart (nyx-ctl on lo escribe)")
+    if unit_installed():
+        active = subprocess.run(
+            ["systemctl", "--user", "is-active", "nyx.service"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        check(active == "active", "systemd unit", f"nyx.service {active}")
+        exec_ok = REPO in open(UNIT, encoding="utf-8").read()
+        check(exec_ok, "unit ↔ repo",
+              "ExecStart apunta a este repo" if exec_ok
+              else f"ExecStart NO apunta a {REPO} (re-ejecuta nyx-ctl install)")
+    else:
+        check(os.path.exists(AUTOSTART), "autostart",
+              AUTOSTART if os.path.exists(AUTOSTART)
+              else "sin autostart ni unit (nyx-ctl on / nyx-ctl install)")
+    if os.path.exists(DBUS_SERVICE):
+        ok_dbus = REPO in open(DBUS_SERVICE, encoding="utf-8").read()
+        check(ok_dbus, "activación D-Bus notifyd",
+              "coherente con el repo" if ok_dbus
+              else "Exec de otra ruta (re-ejecuta nyx-ctl install --notifyd)")
 
     bad = 0
     for ok, label, detail in checks:
@@ -278,6 +356,10 @@ def main() -> int:
         stop()
     elif cmd == "restart":
         restart()
+    elif cmd == "install":
+        install(notifyd="--notifyd" in args[1:])
+    elif cmd == "uninstall":
+        uninstall()
     elif cmd == "toggle":
         stop() if daemon_running() else start()
     elif cmd == "status":
@@ -351,7 +433,8 @@ def main() -> int:
         print(send({"op": "ping"}))
     else:
         print(
-            "uso: nyx-ctl on|off|restart|toggle|status|summon|listen|ask <texto>|say <texto>"
+            "uso: nyx-ctl on|off|restart|install [--notifyd]|uninstall"
+            "|toggle|status|summon|listen|ask <texto>|say <texto>"
             "|mood <normal|alert|heated|glad|dim>|tts [on|off]|history"
             "|notify <app> <summary> [body]|session [show|new|open]"
             "|config [list|get <ruta>|set <ruta> <valor>]|reload|logs [-f]|doctor|ping",
