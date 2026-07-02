@@ -37,6 +37,26 @@ def _alert(reason: str) -> None:
         pass
 
 
+_WRITE_TOOLS = ("Write", "Edit", "MultiEdit")
+
+
+def _mark_backend_write(data: dict) -> None:
+    """Best-effort: el backend del daemon también cuenta como 'mano escribiendo'
+    para el watcher de colisiones (el incidente del 21/06 fue exactamente este)."""
+    try:
+        import time
+
+        sessions = os.path.expanduser("~/.cache/nyx/sessions")
+        os.makedirs(sessions, exist_ok=True)
+        path = os.path.join(sessions, "nyx-backend.json")
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"cwd": data.get("cwd") or os.getcwd(), "ts": time.time()}, f)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
 def main() -> None:
     try:
         data = json.load(sys.stdin)
@@ -51,6 +71,8 @@ def main() -> None:
         emit("deny", reason)
         return
     if decision == "allow":
+        if tool in _WRITE_TOOLS:
+            _mark_backend_write(data)
         emit("allow", reason)
         return
     # zona gris -> confirmación de Marc (espera larga; el hook tiene timeout 300s)
@@ -60,6 +82,8 @@ def main() -> None:
     if not resp:
         emit("deny", "sin confirmación (Nyx no responde)")
     elif resp.get("decision") == "allow":
+        if tool in _WRITE_TOOLS:
+            _mark_backend_write(data)
         emit("allow", "confirmado por Marc")
     else:
         emit("deny", "denegado por Marc")

@@ -1,0 +1,40 @@
+#!/usr/bin/env zsh
+# nyx-offsite — flujo guiado del backup off-site (lo abre Nyx en kitty tras
+# confirmar la propuesta del watcher USB; también sirve a mano).
+#
+# 1. Monta el device como usuario (udisksctl → polkit de sesión; sin sudo).
+# 2. sudo restic-offsite <dev>  ← la contraseña de sudo es la 2ª confirmación.
+# 3. Marca ~/.cache/nyx/last-offsite (para el recordatorio de N días).
+# 4. Ofrece desmontar y apagar el disco.
+#
+# Uso: nyx-offsite [/dev/sdX1]   (default: /dev/sdd1)
+
+set -e
+dev="${1:-/dev/sdd1}"
+
+echo "── nyx · backup off-site ──"
+if [[ -z "$(lsblk -no MOUNTPOINT "$dev" 2>/dev/null | head -1)" ]]; then
+  echo "→ montando $dev"
+  if ! udisksctl mount -b "$dev"; then
+    echo "✗ udisksctl no pudo (¿sesión RDP sin polkit?). A mano:"
+    echo "    sudo mkdir -p /mnt/seagate && sudo mount $dev /mnt/seagate"
+    read -k1 '?pulsa una tecla cuando esté montado (o Ctrl+C para abortar) '
+    echo
+  fi
+fi
+
+sudo restic-offsite "$dev"
+
+mkdir -p ~/.cache/nyx
+touch ~/.cache/nyx/last-offsite
+echo
+echo "✓ off-site al día ($(date '+%d/%m %H:%M'))"
+
+if read -q '?¿Desmontar y apagar el Seagate? [y/n] '; then
+  echo
+  udisksctl unmount -b "$dev" || true
+  udisksctl power-off -b "$dev" 2>/dev/null || true
+  echo "✓ disco listo para desenchufar"
+else
+  echo
+fi

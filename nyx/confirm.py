@@ -94,6 +94,8 @@ class ConfirmPopup:
         key.connect("key-pressed", self._on_key)
         w.add_controller(key)
         self._b_once = b_once
+        self._b_deny = b_deny
+        self._b_always = b_always
 
         self.win = w
         self._cb: Callable[[str], None] | None = None
@@ -107,9 +109,28 @@ class ConfirmPopup:
         self.title.set_text(f"🌙 Nyx quiere {verb} ({tool}):")
         self.cmd.set_text(command or tool)
         self.reason.set_text(f"⚠ {reason}" if reason else "")
+        self._b_always.set_visible(True)
+        self._b_deny.set_label("Denegar  (Esc)")
+        self._b_once.set_label("Permitir una vez  (Enter)")
         self.win.set_visible(True)
         self._b_once.grab_focus()
         return False  # usable como callback de GLib.idle_add
+
+    def show_proposal(
+        self, title: str, command: str, reason: str, on_decision: Callable[[str], None]
+    ) -> bool:
+        """Propuesta PROACTIVA (watcher): misma ventana, sin 'Permitir siempre'
+        (cada propuesta se decide una a una). Esc = Paso, Enter = Adelante."""
+        self._cb = on_decision
+        self.title.set_text(f"🌙 {title}")
+        self.cmd.set_text(command)
+        self.reason.set_text(reason or "")
+        self._b_always.set_visible(False)
+        self._b_deny.set_label("Paso  (Esc)")
+        self._b_once.set_label("Adelante  (Enter)")
+        self.win.set_visible(True)
+        self._b_once.grab_focus()
+        return False
 
     def _decide(self, decision: str):
         cb, self._cb = self._cb, None

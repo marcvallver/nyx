@@ -13,6 +13,7 @@
   session     sesión core: show | new (archiva el hilo) | open (kitty + claude --resume)
   notifs [-n N] historial de notificaciones (incl. silenciadas)
   dnd [on|off]  no molestar (las críticas siguen pasando)
+  watchers [on|off <nombre>]  capa proactiva: estado y toggles (opt-in)
   config      list | get <ruta> | set <ruta> <valor>  (rutas punteadas, valor JSON)
   reload      relee config.json en el daemon (aplica lo aplicable en vivo)
   logs [-f]   cola del log del daemon
@@ -444,6 +445,25 @@ def main() -> int:
             mark = "" if r.get("shown", True) else " (silenciada)"
             urg = " ‼" if int(r.get("urgency", 1)) >= 2 else ""
             print(f"{hhmm}  {r.get('app') or 'sistema'} · {r.get('summary', '')}{urg}{mark}")
+    elif cmd == "watchers":
+        sub = (args[1].lower() if args[1:] else "").strip()
+        if sub in ("on", "off") and len(args) >= 3:
+            name = args[2]
+            nyxconfig.update({f"watchers.{name}.enabled": sub == "on"})
+            resp = send({"op": "reload"})
+            print(f"watcher {name}: {sub}" + ("" if resp else " (se aplicará al arrancar)"))
+        else:
+            resp = send({"op": "watchers"})
+            if not resp:
+                print("daemon parado (nyx-ctl on)")
+                return 1
+            ws = resp.get("watchers") or {}
+            for name, st in ws.items():
+                mark = "●" if st.get("running") else ("○" if st.get("enabled") else "·")
+                extra = " · ".join(f"{k}={v}" for k, v in st.items()
+                                   if k not in ("enabled", "running"))
+                print(f" {mark} {name}" + (f" — {extra}" if extra else ""))
+            print("(· = off — actívalo con: nyx-ctl watchers on <nombre>)")
     elif cmd == "dnd":
         arg = (args[1].lower() if args[1:] else "").strip()
         if arg in ("on", "off"):

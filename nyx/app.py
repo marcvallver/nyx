@@ -14,6 +14,7 @@ gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from . import chatlog, config, notifqueue, policy, streamparse, theme  # noqa: E402
+from .actions import ActionRunner  # noqa: E402
 from .activity import ActivityWatcher  # noqa: E402
 from .avatar import Orb  # noqa: E402
 from .backend import ClaudeBackend  # noqa: E402
@@ -25,6 +26,8 @@ from .inputbar import InputBar  # noqa: E402
 from .ipc import SocketServer  # noqa: E402
 from .moodstate import resolve_orb_state  # noqa: E402
 from .voice import SttListener, TtsSpeaker  # noqa: E402
+from .watchers import WatcherManager  # noqa: E402
+from .watchers.base import Nudge  # noqa: E402
 
 ACTIVITY_FILE = os.path.expanduser("~/.cache/claude-thinking.active")
 _MOODS = theme.MOODS  # normal, alert, heated, glad, dim
@@ -39,6 +42,7 @@ _RELOAD_LIVE_PREFIXES = (
     "voice.tts_enabled",
     "mood",
     "version",
+    "watchers.",
 )
 
 
@@ -91,6 +95,11 @@ class NyxApp(Gtk.Application):
         chatlog.rotate()
         for rec in chatlog.load_recent():
             self.history.add_turn(rec["role"], rec["text"], rec.get("mood", "normal"))
+        # capa proactiva (opt-in por watcher en config)
+        self.actions = ActionRunner(self._action_notify)
+        self._nudge_backlog: list[Nudge] = []  # nudges retenidos mientras hay turno
+        self.watchers = WatcherManager(self._config.get("watchers"), self._on_nudge)
+        self.watchers.start()
 
     def _start_notifyd(self) -> None:
         """Arranca el daemon D-Bus org.freedesktop.Notifications (opt-in por config)."""
@@ -142,6 +151,10 @@ class NyxApp(Gtk.Application):
             self._stop_notifyd()
             if config.get_path(new, "notifications.enabled"):
                 self._start_notifyd()
+        if any(p.startswith("watchers") for p in applied):
+            self.watchers.stop()
+            self.watchers = WatcherManager(new.get("watchers"), self._on_nudge)
+            self.watchers.start()
         return {"ok": True, "applied": applied, "restart_needed": restart_needed}
 
     # --- socket (handler diferido: debe llamar a reply) ---
@@ -171,6 +184,8 @@ class NyxApp(Gtk.Application):
             reply({"ok": True})
         elif op == "reload":
             reply(self._reload_config())
+        elif op == "watchers":
+            reply({"ok": True, "watchers": self.watchers.status()})
         elif op == "session_new":
             self.backend.reset_session()
             archived = chatlog.archive()
@@ -249,6 +264,10 @@ class NyxApp(Gtk.Application):
 
     def _quit_clean(self) -> bool:
         """Cierre ordenado: termina el worker STT y corta la voz antes de salir."""
+        try:
+            self.watchers.stop()
+        except Exception:
+            pass
         try:
             self.stt.close()
         except Exception:
@@ -407,6 +426,41 @@ class NyxApp(Gtk.Application):
         """Callback del daemon D-Bus (corre en el bucle GLib); marshalea a la UI."""
         GLib.idle_add(self._notif_push, dict(n))
 
+    # --- capa proactiva: nudges de los watchers ---
+    def _on_nudge(self, nudge: Nudge) -> None:
+        """Salida de un watcher (ya filtrada por el NudgeGate). En el bucle GLib."""
+        if nudge.action is not None and (self.backend.busy or self.confirm_popup.win.get_visible()):
+            self._nudge_backlog.append(nudge)  # no pisar un turno ni otro popup
+            return
+        self._present_nudge(nudge)
+
+    def _present_nudge(self, nudge: Nudge) -> None:
+        if nudge.action is None:
+            GLib.idle_add(self._ephemeral, nudge.text, nudge.ttl_ms, nudge.mood, False)
+            return
+
+        def on_decision(decision: str, action=nudge.action):
+            if decision == "allow":
+                self.actions.run(action)
+            GLib.idle_add(self._drain_nudges)  # siguiente propuesta retenida, si la hay
+
+        GLib.idle_add(self.confirm_popup.show_proposal,
+                      nudge.text, nudge.action.command,
+                      f"acción propuesta · {nudge.action.kind}", on_decision)
+        if nudge.mood != "normal":
+            GLib.idle_add(self._flash_mood, nudge.mood, 6000)
+
+    def _drain_nudges(self) -> bool:
+        if self._nudge_backlog and not self.backend.busy \
+                and not self.confirm_popup.win.get_visible():
+            self._present_nudge(self._nudge_backlog.pop(0))
+        return False
+
+    def _action_notify(self, text: str, mood: str) -> None:
+        """Resultado de una acción (puede llegar desde un callback async)."""
+        GLib.idle_add(self._ephemeral, text, 8000,
+                      mood if mood in _MOODS else "normal", False)
+
     def _summon(self) -> bool:
         self._listening = True
         self._refresh_orb()
@@ -510,6 +564,7 @@ class NyxApp(Gtk.Application):
             self._set_nyx("idle")
             # las notifs retenidas durante el turno salen cuando el bocadillo de la
             # respuesta se oculte (on_hidden → _notif_show_next), no antes
+            GLib.idle_add(self._drain_nudges)  # propuestas retenidas durante el turno
 
 
 def main() -> None:

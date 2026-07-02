@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""nyx-session-mark — hooks PostToolUse(Edit|Write|MultiEdit) y SessionEnd de
+Claude Code. Marca qué sesión está ESCRIBIENDO en qué cwd para el watcher de
+colisiones de Nyx (~/.cache/nyx/sessions/<session_id>.json). Stdlib pura,
+best-effort y silencioso: jamás molesta al hook que lo llama.
+
+Uso:  nyx-session-mark          (marca; lee el JSON del hook por stdin)
+      nyx-session-mark --end    (borra el marcador al cerrar la sesión)
+"""
+
+import json
+import os
+import sys
+import time
+
+SESSIONS_DIR = os.path.expanduser("~/.cache/nyx/sessions")
+
+
+def main() -> None:
+    try:
+        payload = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return
+    if not isinstance(payload, dict):
+        return
+    sid = (payload.get("session_id") or "").strip()
+    if not sid or "/" in sid:
+        return
+    path = os.path.join(SESSIONS_DIR, f"{sid}.json")
+    if "--end" in sys.argv:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return
+    try:
+        os.makedirs(SESSIONS_DIR, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"cwd": payload.get("cwd") or "", "ts": time.time()}, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+
+
+if __name__ == "__main__":
+    main()
