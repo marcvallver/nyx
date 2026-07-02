@@ -45,6 +45,12 @@ _ABERRATION = {
     "dim":    (DIM, DIM),
 }
 
+# tinte de mood PERSISTENTE: colorea el orbe en CUALQUIER estado (thinking/talking/
+# idle…) conservando su dinámica — sin esto, con una sesión de terminal siempre viva
+# el orbe se queda en teal "thinking" y el mood no se ve nunca. Los estados de mood
+# explícitos (flash/turno) ganan al tinte persistente.
+MOOD_COLORS = {"alert": RED, "heated": AMBER, "glad": GLAD, "dim": DIM}
+
 # scale=tamaño del panel · alpha=opacidad · glitch=prob. de ráfaga/frame
 # glyph=alpha del glifo · color=tinte del borde/glow (teal normal; cada mood su color)
 STATES = {
@@ -91,6 +97,7 @@ class Orb:
 
         self.win = w
         self.state = "idle"
+        self.mood = "normal"  # tinte persistente (override de color en cualquier estado)
         self.frame = 0
         self.s_scale = STATES["idle"]["scale"]
         self.s_alpha = STATES["idle"]["alpha"]
@@ -126,13 +133,27 @@ class Orb:
             self._ensure_timer()
         return False
 
+    def set_mood(self, mood: str) -> bool:
+        """Tinte persistente: colorea el orbe en cualquier estado (el mood unifica todo)."""
+        if mood != self.mood:
+            self.mood = mood
+            self._ensure_timer()  # anima la transición de color aunque esté congelado
+        return False
+
+    def _target_color(self) -> tuple:
+        """Color objetivo: el estado de mood explícito (flash/turno) gana; si no,
+        el tinte persistente; si no, el color propio del estado (teal)."""
+        if self.state in MOOD_COLORS:
+            return STATES[self.state]["color"]
+        return MOOD_COLORS.get(self.mood, STATES[self.state]["color"])
+
     def _ensure_timer(self):
         if self._timer is None:
             self._timer = GLib.timeout_add(self.FPS_MS, self._tick)
 
     def _settled(self) -> bool:
         t = STATES[self.state]
-        tc = t["color"]
+        tc = self._target_color()
         return (abs(self.s_scale - t["scale"]) < 0.004
                 and abs(self.s_alpha - t["alpha"]) < 0.004
                 and abs(self.s_glyph - t["glyph"]) < 0.01
@@ -145,7 +166,7 @@ class Orb:
         self.s_scale += (t["scale"] - self.s_scale) * k
         self.s_alpha += (t["alpha"] - self.s_alpha) * k
         self.s_glyph += (t["glyph"] - self.s_glyph) * k
-        tc = t["color"]
+        tc = self._target_color()
         kc = 0.10  # transición de color más lenta (más dramática)
         self.s_color = (
             self.s_color[0] + (tc[0] - self.s_color[0]) * kc,
@@ -192,7 +213,8 @@ class Orb:
         if dx > 0:  # franjas de aberración RGB
             cr.save()
             cr.set_operator(cairo.Operator.ADD)
-            ab_a, ab_b = _ABERRATION.get(self.state, (CYAN, MAGENTA))
+            ab_key = self.state if self.state in _ABERRATION else self.mood
+            ab_a, ab_b = _ABERRATION.get(ab_key, (CYAN, MAGENTA))
             cr.set_source_rgba(*ab_a, 0.45)
             cr.mask_surface(surf, dx, jitter)
             cr.set_source_rgba(*ab_b, 0.45)

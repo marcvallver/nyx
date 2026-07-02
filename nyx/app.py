@@ -88,9 +88,10 @@ class NyxApp(Gtk.Application):
             max_per_minute=config.get_path(self._config, "notifications.max_per_minute", 6))
         self._notif_current: dict | None = None
         self.bubble.on_hidden = self._on_bubble_hidden
-        if self._persistent_mood != "normal":  # restaurar el tinte de reposo
+        if self._persistent_mood != "normal":  # restaurar el tinte tras reinicio
             self.bubble.base_mood = self._persistent_mood
             self.bubble.set_mood(self._persistent_mood)
+            self.orb.set_mood(self._persistent_mood)
             self._refresh_orb()
         # hilo persistente de la sesión core: recuperar los últimos turnos al panel
         chatlog.rotate()
@@ -326,8 +327,10 @@ class NyxApp(Gtk.Application):
         GLib.idle_add(self._apply_persistent_mood)
 
     def _apply_persistent_mood(self) -> bool:
-        """Tiñe TODAS las superficies en reposo con el mood persistente."""
+        """Tiñe TODAS las superficies con el mood persistente (el orbe en cualquier
+        estado: sin el tinte, con una terminal siempre activa nunca se vería)."""
         m = self._persistent_mood
+        self.orb.set_mood(m)
         self._refresh_orb()
         self.inputbar.set_mood(m)
         if not self.backend.busy:  # no pisar el tinte de un turno en streaming
