@@ -44,17 +44,17 @@ class _TitlebarIcon(Gtk.DrawingArea):
 
     def __init__(self, kind: str):
         super().__init__()
-        self.set_content_width(14)
-        self.set_content_height(14)
+        self.set_content_width(18)
+        self.set_content_height(18)
         self._kind = kind
         self.set_draw_func(self._draw)
 
     def _draw(self, _area, cr, w, h):
         c = self.get_color()
         cx, cy = w / 2.0, h / 2.0
-        r = 3.5  # semilado: caja de 7px, como la cruz del × de 15px de fuente
+        r = 5.5  # semilado: caja de 11px — el tamaño de los glifos de Klassy
         # fake-glow (pasada gruesa translúcida) + trazo nítido, mismo path
-        for lw, alpha in ((4.0, 0.30), (1.4, 1.0)):
+        for lw, alpha in ((4.5, 0.30), (1.6, 1.0)):
             cr.set_line_width(lw)
             cr.set_source_rgba(c.red, c.green, c.blue, c.alpha * alpha)
             if self._kind == "min":
@@ -137,12 +137,14 @@ class HudTitlebar(Gtk.WindowHandle):
 
 
 class HudFrame(Gtk.DrawingArea):
-    def __init__(self):
+    def __init__(self, inset: float = 2.0, radius: float = 9.0):
         super().__init__()
         self.set_can_target(False)
         self.set_draw_func(self._draw)
         self.frame = 0
         self.color = TEAL  # color unificado del marco (borde + brackets); cambia con el mood
+        self.inset = inset    # separación de brackets/borde (mayor si la ventana clipea redondo)
+        self.radius = radius  # radio del borde rrect (casar con el CSS de la superficie)
         self._timer: int | None = None
         self.connect("map", self._on_map)
         self.connect("unmap", self._on_unmap)
@@ -169,8 +171,9 @@ class HudFrame(Gtk.DrawingArea):
     def _draw(self, _area, cr, w, h):
         if w < 8 or h < 8:
             return
+        i = self.inset
         # borde suave (color del mood)
-        _rrect(cr, 1.0, 1.0, w - 2.0, h - 2.0, 9.0)
+        _rrect(cr, i - 1.0, i - 1.0, w - 2 * (i - 1.0), h - 2 * (i - 1.0), self.radius)
         cr.set_source_rgba(*self.color, 0.5)
         cr.set_line_width(1.3)
         cr.stroke()
@@ -182,8 +185,8 @@ class HudFrame(Gtk.DrawingArea):
         n = nmax * 0.5 + nmax * 0.5 * osc  # entre ~50% y 100% de nmax
         cr.set_source_rgba(*self.color, 0.95)
         cr.set_line_width(2.0)
-        for cx, cy, sx, sy in ((2, 2, 1, 1), (w - 2, 2, -1, 1),
-                               (2, h - 2, 1, -1), (w - 2, h - 2, -1, -1)):
+        for cx, cy, sx, sy in ((i, i, 1, 1), (w - i, i, -1, 1),
+                               (i, h - i, 1, -1), (w - i, h - i, -1, -1)):
             cr.move_to(cx, cy + sy * n)
             cr.line_to(cx, cy)
             cr.line_to(cx + sx * n, cy)

@@ -86,7 +86,7 @@ class ControlPanel:
         w = Gtk.ApplicationWindow(application=app)
         w.set_title("Nyx · Control")
         w.set_default_size(_WIDTH, _HEIGHT)
-        w.add_css_class("nyx-square")  # esquinas rectas: no cortar los brackets
+        w.add_css_class("nyx-win")  # shape Klassy (radius 8), como el resto del sistema
         w.connect("close-request", self._on_close_request)
         self._titlebar = hud.HudTitlebar("NYX · CONTROL", self._on_close_clicked)
         w.set_titlebar(self._titlebar)
@@ -159,7 +159,8 @@ class ControlPanel:
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_child(box)
 
-        self._hud = hud.HudFrame()
+        # inset 4: el clip redondeado de la ventana (radius 8) no toca los brackets
+        self._hud = hud.HudFrame(inset=4.0, radius=8.0)
         overlay = Gtk.Overlay()
         overlay.set_child(scroll)
         overlay.add_overlay(self._hud)

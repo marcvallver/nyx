@@ -127,9 +127,10 @@ window {{ background: transparent; }}
 
 
 TITLEBAR_CSS = f"""
-/* esquinas RECTAS en toda la ventana: el radius cortaba los corner-brackets
-   del HudFrame (feedback de Marc 02/07) */
-window.nyx-square, window.nyx-square decoration {{ border-radius: 0; }}
+/* misma shape que Klassy (WindowCornerRadius=8 en klassyrc): la skin Nyx debe
+   casar con las ventanas del sistema. Los brackets del HudFrame van con inset
+   extra en el panel para que el clip redondeado no los corte. */
+window.nyx-win, window.nyx-win decoration {{ border-radius: 8px; }}
 .nyx-titlebar {{
   background: #090e1b;
   border-bottom: 1px solid rgba({GLOW_RGB}, 0.35);
@@ -153,7 +154,7 @@ window.nyx-square, window.nyx-square decoration {{ border-radius: 0; }}
   padding: 2px 0;  /* aire vertical: sin esto el glow recorta el tope de las letras */
   text-shadow: 0 0 8px rgba({GLOW_RGB}, 0.6);
 }}
-.nyx-tb-btn {{ padding: 2px 5px; }}
+.nyx-tb-btn {{ padding: 3px 7px; }}  /* área clicable generosa, como Klassy */
 /* el mood tiñe glifo + título (mismas variantes legibles que .nyx-close) */
 .nyx-titlebar-fg-alert  {{ color: #ff2e5f; text-shadow: 0 0 8px rgba({RED_RGB}, 0.9); }}
 .nyx-titlebar-fg-heated {{ color: {AMBER}; text-shadow: 0 0 8px rgba({AMBER_RGB}, 0.85); }}
