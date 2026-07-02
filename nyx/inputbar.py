@@ -59,7 +59,41 @@ class InputBar:
         key = Gtk.EventControllerKey()
         key.connect("key-pressed", self._on_key)
         w.add_controller(key)
-        w.connect("map", lambda *_: self.entry.grab_focus())
+        w.connect("map", lambda *_: (print("[dbg-input] map→grab", flush=True),
+                                     self.entry.grab_focus()))
+        # --- instrumentación TEMPORAL bug 'caracteres pisados' ---
+        try:
+            _im = Gtk.Settings.get_default().get_property("gtk-im-module")
+            print(f"[dbg-input] gtk-im-module efectivo: {_im!r}", flush=True)
+        except Exception:
+            pass
+        self.entry.connect(
+            "notify::text",
+            lambda e, _p: print(f"[dbg-input] text={e.get_text()!r} "
+                                f"sel={e.get_selection_bounds()} "
+                                f"pos={e.get_position()} "
+                                f"ovw={e.get_overwrite_mode()}", flush=True))
+        buf = self.entry.get_buffer()
+        buf.connect(
+            "inserted-text",
+            lambda _b, pos, chars, n: print(
+                f"[dbg-input] INS pos={pos} chars={chars!r} n={n}", flush=True))
+        buf.connect(
+            "deleted-text",
+            lambda _b, pos, n: print(
+                f"[dbg-input] DEL pos={pos} n={n}", flush=True))
+        keydbg = Gtk.EventControllerKey()
+        keydbg.set_propagation_phase(Gtk.PropagationPhase.CAPTURE)
+        keydbg.connect(
+            "key-pressed",
+            lambda _c, kv, code, state: (
+                print(f"[dbg-input] KEY kv={kv} code={code} st={int(state)}",
+                      flush=True), False)[1])
+        self.entry.add_controller(keydbg)
+        foc = Gtk.EventControllerFocus()
+        foc.connect("enter", lambda *_: print("[dbg-input] focus-enter", flush=True))
+        foc.connect("leave", lambda *_: print("[dbg-input] focus-leave", flush=True))
+        self.entry.add_controller(foc)
 
         self.win = w
         w.set_visible(False)

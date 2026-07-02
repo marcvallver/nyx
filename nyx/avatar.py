@@ -109,6 +109,7 @@ class Orb:
         self.win = w
         self.state = "idle"
         self.mood = "normal"  # tinte persistente (override de color en cualquier estado)
+        self.dnd = False  # no molestar: en reposo el sparkle cede a la luna ☾
         self._corner = corner if corner in CORNERS else "tr"
         self._margin_y = int(margin_top)  # margen del eje vertical de la esquina
         self._margin_x = int(margin_right)  # posición actual en el eje horizontal
@@ -270,6 +271,12 @@ class Orb:
             self._ensure_timer()  # anima la transición de color aunque esté congelado
         return False
 
+    def set_dnd(self, on: bool) -> None:
+        """No molestar: el glifo de reposo pasa a ser la luna ☾ (Nyx duerme)."""
+        if bool(on) != self.dnd:
+            self.dnd = bool(on)
+            self._ensure_timer()
+
     def _target_color(self) -> tuple:
         """Color objetivo: el estado de mood explícito (flash/turno) gana; si no,
         el tinte persistente; si no, el color propio del estado (teal)."""
@@ -316,6 +323,10 @@ class Orb:
         return True
 
     def _glyph(self) -> str:
+        # DND en reposo: luna menguante ESTÁTICA (Nyx duerme); la interacción
+        # directa (hablar/escuchar/pensar su turno) recupera el sparkle
+        if self.dnd and self.state not in ("talking", "thinking", "listening"):
+            return "☾"
         # sparkle SIEMPRE animado (cadencia real 120 ms), en todos los estados
         idx = (self.frame * self.FPS_MS // sparkle.FRAME_MS) % len(sparkle.FRAMES)
         return sparkle.FRAMES[idx]

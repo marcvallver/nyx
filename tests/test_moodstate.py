@@ -31,3 +31,22 @@ def test_persistent_mood_at_rest():
 
 def test_idle_default():
     assert resolve_orb_state("idle", "normal", False, False, "normal") == "idle"
+
+
+def test_dnd_silences_ambient_terminal():
+    # con DND la actividad de terminal NO despierta el orbe (luna en reposo)
+    assert resolve_orb_state("idle", "normal", True, False, "normal",
+                             dnd=True) == "idle"
+    # y el mood persistente sigue tiñendo el reposo
+    assert resolve_orb_state("idle", "normal", True, False, "glad",
+                             dnd=True) == "glad"
+
+
+def test_dnd_keeps_direct_interaction():
+    # no molestar no es no responder: el turno propio y la escucha se muestran
+    assert resolve_orb_state("thinking", "normal", False, False, "normal",
+                             dnd=True) == "thinking"
+    assert resolve_orb_state("talking", "normal", False, False, "normal",
+                             dnd=True) == "talking"
+    assert resolve_orb_state("idle", "normal", False, True, "normal",
+                             dnd=True) == "listening"

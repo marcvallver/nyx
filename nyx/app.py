@@ -69,6 +69,7 @@ class NyxApp(Gtk.Application):
         self._turns = 0
         ui = self._config["ui"]
         self.orb = Orb(self, **ui["orb"])
+        self.orb.set_dnd(bool(config.get_path(self._config, "notifications.dnd")))
         self.bubble = Bubble(self, **ui["bubble"])
         self.history = HistoryPanel(self, **ui["history"])
         self.inputbar = InputBar(self, self.send_turn, self._dismiss_input,
@@ -152,6 +153,9 @@ class NyxApp(Gtk.Application):
             self._stop_notifyd()
             if config.get_path(new, "notifications.enabled"):
                 self._start_notifyd()
+        if "notifications.dnd" in applied:  # la luna ☾ sigue al modo no molestar
+            self.orb.set_dnd(bool(config.get_path(new, "notifications.dnd")))
+            self._refresh_orb()
         if any(p.startswith("watchers") for p in applied):
             self.watchers.stop()
             self.watchers = WatcherManager(new.get("watchers"), self._on_nudge)
@@ -314,6 +318,7 @@ class NyxApp(Gtk.Application):
         self.orb.set_state(resolve_orb_state(
             self._nyx_state, self._current_mood, self._terminal_active,
             self._listening, self._persistent_mood,
+            dnd=bool(config.get_path(self._config, "notifications.dnd")),
         ))
 
     def set_persistent_mood(self, mood: str) -> None:

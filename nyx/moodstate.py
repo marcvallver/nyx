@@ -14,14 +14,19 @@ def resolve_orb_state(
     terminal_active: bool,
     listening: bool,
     persistent_mood: str,
+    dnd: bool = False,
 ) -> str:
     """Prioridad: mood del turno hablando > talking > thinking/terminal >
-    listening > mood persistente en reposo > idle."""
+    listening > mood persistente en reposo > idle.
+
+    Con DND la actividad AMBIENTAL (terminal) no despierta el orbe — se queda
+    en reposo (luna ☾); la interacción directa (hablarle, su propio turno)
+    sí se muestra: no molestar no es no responder."""
     if nyx_state == "talking" and current_mood != "normal":
         return current_mood
     if nyx_state == "talking":
         return "talking"
-    if nyx_state == "thinking" or terminal_active:
+    if nyx_state == "thinking" or (terminal_active and not dnd):
         return "thinking"
     if listening:
         return "listening"
