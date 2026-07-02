@@ -86,6 +86,7 @@ class ControlPanel:
         w = Gtk.ApplicationWindow(application=app)
         w.set_title("Nyx · Control")
         w.set_default_size(_WIDTH, _HEIGHT)
+        w.add_css_class("nyx-square")  # esquinas rectas: no cortar los brackets
         w.connect("close-request", self._on_close_request)
         self._titlebar = hud.HudTitlebar("NYX · CONTROL", self._on_close_clicked)
         w.set_titlebar(self._titlebar)

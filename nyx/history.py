@@ -52,6 +52,7 @@ class HistoryPanel:
         w = Gtk.ApplicationWindow(application=app)
         w.set_title("Nyx · Historial")
         w.set_default_size(width, 700)
+        w.add_css_class("nyx-square")  # esquinas rectas: no cortar los brackets
         w.connect("close-request", self._on_close_request)
         self._titlebar = hud.HudTitlebar("NYX · HISTORIAL", self._on_close_clicked)
         w.set_titlebar(self._titlebar)

@@ -56,28 +56,48 @@ class HudTitlebar(Gtk.WindowHandle):
         lbl = Gtk.Label(label=title, xalign=0.0)
         lbl.add_css_class("nyx-titlebar-title")
         lbl.set_hexpand(True)
+        mini = Gtk.Button(label="–")
+        mini.connect("clicked", self._on_minimize)
+        maxi = Gtk.Button(label="□")
+        maxi.connect("clicked", self._on_maximize)
         close = Gtk.Button(label="×")
-        close.add_css_class("nyx-close")
         close.connect("clicked", lambda *_: on_close())
         box.append(glyph)
         box.append(lbl)
-        box.append(close)
+        for btn in (mini, maxi, close):
+            btn.add_css_class("nyx-close")
+            box.append(btn)
         self.set_child(box)
         self._box = box
         self._fg = (glyph, lbl)
-        self._close = close
+        self._btns = (mini, maxi, close)
+
+    def _on_minimize(self, *_):
+        win = self.get_root()
+        if isinstance(win, Gtk.Window):
+            win.minimize()
+
+    def _on_maximize(self, *_):
+        win = self.get_root()
+        if isinstance(win, Gtk.Window):
+            if win.is_maximized():
+                win.unmaximize()
+            else:
+                win.maximize()
 
     def set_mood(self, mood: str) -> None:
         for m in theme.MOODS:
             if m == "normal":
                 continue
             self._box.remove_css_class(f"nyx-titlebar-{m}")
-            self._close.remove_css_class(f"nyx-close-{m}")
+            for b in self._btns:
+                b.remove_css_class(f"nyx-close-{m}")
             for w in self._fg:
                 w.remove_css_class(f"nyx-titlebar-fg-{m}")
         if mood != "normal" and mood in theme.MOODS:
             self._box.add_css_class(f"nyx-titlebar-{mood}")
-            self._close.add_css_class(f"nyx-close-{mood}")
+            for b in self._btns:
+                b.add_css_class(f"nyx-close-{mood}")
             for w in self._fg:
                 w.add_css_class(f"nyx-titlebar-fg-{mood}")
 

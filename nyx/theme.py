@@ -127,11 +127,12 @@ window {{ background: transparent; }}
 
 
 TITLEBAR_CSS = f"""
+/* esquinas RECTAS en toda la ventana: el radius cortaba los corner-brackets
+   del HudFrame (feedback de Marc 02/07) */
+window.nyx-square, window.nyx-square decoration {{ border-radius: 0; }}
 .nyx-titlebar {{
   background: #090e1b;
   border-bottom: 1px solid rgba({GLOW_RGB}, 0.35);
-  border-top-left-radius: 9px;
-  border-top-right-radius: 9px;
   padding: 6px 12px;
 }}
 .nyx-titlebar-alert  {{ border-bottom-color: rgba({RED_RGB}, 0.65); }}
