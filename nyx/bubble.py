@@ -30,6 +30,7 @@ class Bubble:
     def __init__(self, app, margin_top: int = 140, margin_right: int = 18,
                  ttl_ms: int = 12000):
         self.default_ttl = int(ttl_ms)  # TTL por defecto de say/notify (config ui.bubble)
+        self.base_mood = "normal"  # mood de reposo (el persistente del daemon)
         w = Gtk.ApplicationWindow(application=app)
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
@@ -236,5 +237,5 @@ class Bubble:
     def _really_hide(self) -> bool:
         if not self.revealer.get_reveal_child():  # no re-abierto entretanto
             self.win.set_visible(False)
-            self.set_mood("normal")  # reset visual al ocultar
+            self.set_mood(self.base_mood)  # reset visual al ocultar (reposo = mood persistente)
         return False

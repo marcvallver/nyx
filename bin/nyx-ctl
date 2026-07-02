@@ -3,12 +3,15 @@
 
   on|start    lanza el daemon (si no corre) + escribe autostart KDE
   off|stop    pide al daemon que se cierre (op quit) + quita autostart
+  restart     reinicio limpio (quit + espera + start)
   toggle      alterna el daemon
-  status      running | stopped
+  status      estado completo (modelo, sesión, mood, voz, coste…)
   tts [on|off] voz: sin arg alterna; on/off fija (persiste en config.json)
   say <texto> muestra un bocadillo
   config      list | get <ruta> | set <ruta> <valor>  (rutas punteadas, valor JSON)
   reload      relee config.json en el daemon (aplica lo aplicable en vivo)
+  logs [-f]   cola del log del daemon
+  doctor      diagnóstico del entorno (socket, layer-shell, config, voz, notifs)
   ping        diagnóstico
 
 Lanza el daemon con LD_PRELOAD (imprescindible para gtk4-layer-shell) y
@@ -74,6 +77,105 @@ def stop() -> None:
     print("nyx: OFF")
 
 
+def restart() -> None:
+    """Reinicio limpio: quit + esperar a que muera + start (sin tocar el autostart)."""
+    import time
+
+    if daemon_running():
+        send({"op": "quit"})
+        for _ in range(50):  # hasta 5 s a que suelte el socket
+            time.sleep(0.1)
+            if not daemon_running():
+                break
+        else:
+            print("nyx: el daemon no termina; revisa `nyx-ctl logs`", file=sys.stderr)
+            return
+    start()
+
+
+def logs(follow: bool = False) -> int:
+    if not os.path.exists(LOG):
+        print(f"sin log todavía ({LOG})", file=sys.stderr)
+        return 1
+    cmd = ["tail", "-n", "40"] + (["-f"] if follow else []) + [LOG]
+    try:
+        return subprocess.call(cmd)
+    except KeyboardInterrupt:
+        return 0
+
+
+def print_status() -> None:
+    resp = send({"op": "status"})
+    if not resp:
+        print("stopped")
+        return
+    cost_last = resp.get("cost_last_usd")
+    cost_total = resp.get("cost_total_usd")
+    print("running" + (" · busy" if resp.get("busy") else ""))
+    print(f"  modelo:  {resp.get('model', '?')}")
+    print(f"  sesión:  {resp.get('session') or '(nueva)'}")
+    print(f"  mood:    {resp.get('mood', '?')}")
+    print(f"  voz:     {'ON' if resp.get('tts') else 'off'}"
+          f" · stt {'ok' if resp.get('stt_available') else 'no disponible'}")
+    print(f"  notifyd: {'activo' if resp.get('notifyd') else 'off'}")
+    if resp.get("turns"):
+        last = f"${cost_last:.4f}" if isinstance(cost_last, int | float) else "—"
+        total = f"${cost_total:.4f}" if isinstance(cost_total, int | float) else "—"
+        print(f"  turnos:  {resp['turns']} · último {last} · total {total}")
+
+
+def doctor() -> int:
+    """Diagnóstico del entorno de Nyx. Devuelve 1 si hay algún ✘."""
+    import shutil
+
+    checks: list[tuple[bool, str, str]] = []
+
+    def check(ok: bool, label: str, detail: str = "") -> None:
+        checks.append((ok, label, detail))
+
+    running = daemon_running()
+    check(running, "daemon", "responde al ping" if running else "parado (nyx-ctl on)")
+    check(os.path.exists(PRELOAD), "gtk4-layer-shell", PRELOAD)
+    gi_ok = subprocess.run(
+        [sys.executable, "-c", "import gi; gi.require_version('Gtk', '4.0')"],
+        capture_output=True,
+    ).returncode == 0
+    check(gi_ok, "PyGObject/GTK4", "" if gi_ok else "no importa gi (¿python-gobject?)")
+    raw = nyxconfig._read_raw()
+    eff = nyxconfig.deep_merge(nyxconfig.DEFAULTS, nyxconfig.migrate(raw)
+                               if nyxconfig.is_legacy(raw) else raw)
+    warns = nyxconfig.validate(eff)
+    check(not warns, "config.json", "; ".join(warns) if warns else "schema v2 válido")
+    persona = os.path.expanduser("~/.config/nyx/persona.md")
+    settings = os.path.expanduser("~/.config/nyx/settings.json")
+    check(os.path.exists(persona), "persona.md", persona)
+    check(os.path.exists(settings), "settings.json (perfil aislado)", settings)
+    venv_py = os.path.expanduser("~/.local/share/nyx/venv-voice/bin/python")
+    check(os.path.exists(venv_py), "venv de voz (STT)", venv_py)
+    for binname in ("edge-tts", "ffmpeg", "pw-play"):
+        venv_bin = os.path.expanduser(f"~/.local/share/nyx/venv-voice/bin/{binname}")
+        found = venv_bin if os.path.exists(venv_bin) else shutil.which(binname)
+        check(bool(found), f"voz: {binname}", found or "no encontrado")
+    owner = subprocess.run(
+        ["gdbus", "call", "--session", "--dest", "org.freedesktop.DBus",
+         "--object-path", "/org/freedesktop/DBus",
+         "--method", "org.freedesktop.DBus.GetNameOwner",
+         "org.freedesktop.Notifications"],
+        capture_output=True, text=True,
+    )
+    check(owner.returncode == 0, "org.freedesktop.Notifications",
+          "con dueño (KDE o Nyx)" if owner.returncode == 0 else "sin dueño")
+    check(os.path.exists(AUTOSTART), "autostart",
+          AUTOSTART if os.path.exists(AUTOSTART) else "sin autostart (nyx-ctl on lo escribe)")
+
+    bad = 0
+    for ok, label, detail in checks:
+        mark = "✔" if ok else "✘"
+        bad += 0 if ok else 1
+        print(f" {mark} {label}" + (f" — {detail}" if detail else ""))
+    return 1 if bad else 0
+
+
 def _print_reload(resp: dict) -> None:
     applied = resp.get("applied") or []
     restart = resp.get("restart_needed") or []
@@ -122,10 +224,16 @@ def main() -> int:
         start()
     elif cmd in ("off", "stop"):
         stop()
+    elif cmd == "restart":
+        restart()
     elif cmd == "toggle":
         stop() if daemon_running() else start()
     elif cmd == "status":
-        print("running" if daemon_running() else "stopped")
+        print_status()
+    elif cmd == "logs":
+        return logs(follow="-f" in args[1:])
+    elif cmd == "doctor":
+        return doctor()
     elif cmd == "say":
         ok = send({"op": "say", "text": " ".join(args[1:])})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
@@ -189,10 +297,10 @@ def main() -> int:
         print(send({"op": "ping"}))
     else:
         print(
-            "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>"
+            "uso: nyx-ctl on|off|restart|toggle|status|summon|listen|ask <texto>|say <texto>"
             "|mood <normal|alert|heated|glad|dim>|tts [on|off]|history"
             "|notify <app> <summary> [body]"
-            "|config [list|get <ruta>|set <ruta> <valor>]|reload|ping",
+            "|config [list|get <ruta>|set <ruta> <valor>]|reload|logs [-f]|doctor|ping",
             file=sys.stderr,
         )
         return 1

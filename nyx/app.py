@@ -22,6 +22,7 @@ from .confirm import ConfirmPopup  # noqa: E402
 from .history import HistoryPanel  # noqa: E402
 from .inputbar import InputBar  # noqa: E402
 from .ipc import SocketServer  # noqa: E402
+from .moodstate import resolve_orb_state  # noqa: E402
 from .voice import SttListener, TtsSpeaker  # noqa: E402
 
 ACTIVITY_FILE = os.path.expanduser("~/.cache/claude-thinking.active")
@@ -50,10 +51,16 @@ class NyxApp(Gtk.Application):
         self._terminal_active = False
         self._nyx_state = "idle"
         self._current_mood = "normal"
-        self._persistent_mood = "normal"
+        # mood persistente: sobrevive reinicios (config "mood") y tiñe el reposo
+        m = self._config.get("mood")
+        self._persistent_mood = m if m in _MOODS else "normal"
         self._flash_id: int | None = None  # timer del flash de mood en `say`/notify/deny
         self._turn_text = ""  # texto de Nyx del turno en curso (para el historial)
         self._listening = False
+        # métricas de turno (para `status` y el futuro panel de control)
+        self._cost_last: float | None = None
+        self._cost_total = 0.0
+        self._turns = 0
         ui = self._config["ui"]
         self.orb = Orb(self, **ui["orb"])
         self.bubble = Bubble(self, **ui["bubble"])
@@ -70,6 +77,10 @@ class NyxApp(Gtk.Application):
         self.notifyd = None
         if config.get_path(self._config, "notifications.enabled"):
             self._start_notifyd()
+        if self._persistent_mood != "normal":  # restaurar el tinte de reposo
+            self.bubble.base_mood = self._persistent_mood
+            self.bubble.set_mood(self._persistent_mood)
+            self._refresh_orb()
 
     def _start_notifyd(self) -> None:
         """Arranca el daemon D-Bus org.freedesktop.Notifications (opt-in por config)."""
@@ -112,6 +123,11 @@ class NyxApp(Gtk.Application):
             self.backend.model = config.get_path(new, "backend.model")
         if "voice.tts_enabled" in applied:
             self.tts.set_enabled(bool(config.get_path(new, "voice.tts_enabled")))
+        if "mood" in applied:
+            m = new.get("mood")
+            self._persistent_mood = m if m in _MOODS else "normal"
+            self.bubble.base_mood = self._persistent_mood
+            GLib.idle_add(self._apply_persistent_mood)
         if any(p.startswith("notifications.") for p in applied):
             self._stop_notifyd()
             if config.get_path(new, "notifications.enabled"):
@@ -124,8 +140,18 @@ class NyxApp(Gtk.Application):
         if op == "ping":
             reply({"ok": True, "pong": True})
         elif op == "status":
-            reply({"ok": True, "running": True, "busy": self.backend.busy,
-                   "session": self.backend.session_id})
+            reply({
+                "ok": True, "running": True, "busy": self.backend.busy,
+                "session": self.backend.session_id,
+                "model": self.backend.model,
+                "mood": self._persistent_mood,
+                "tts": self.tts.enabled,
+                "stt_available": self.stt.available(),
+                "notifyd": self.notifyd is not None,
+                "cost_last_usd": self._cost_last,
+                "cost_total_usd": round(self._cost_total, 4),
+                "turns": self._turns,
+            })
         elif op == "say":
             text = (msg.get("text") or "").strip()
             ttl = int(msg.get("ttl_ms") or self.bubble.default_ttl)
@@ -169,7 +195,9 @@ class NyxApp(Gtk.Application):
         elif op == "mood":
             m = msg.get("mood") if msg.get("mood") in _MOODS else "normal"
             self._persistent_mood = m
-            GLib.idle_add(self._refresh_orb)
+            self._config = config.update({"mood": m})  # sobrevive reinicios
+            self.bubble.base_mood = m
+            GLib.idle_add(self._apply_persistent_mood)
             reply({"ok": True, "mood": m})
         elif op == "summon":
             GLib.idle_add(self._summon)
@@ -234,18 +262,19 @@ class NyxApp(Gtk.Application):
     def _refresh_orb(self) -> None:
         if self._flash_id is not None:
             return  # un flash de mood (say/notify/deny) manda el orbe hasta que expire su timer
-        if self._nyx_state == "talking" and self._current_mood != "normal":
-            self.orb.set_state(self._current_mood)
-        elif self._nyx_state == "talking":
-            self.orb.set_state("talking")
-        elif self._nyx_state == "thinking" or self._terminal_active:
-            self.orb.set_state("thinking")
-        elif self._listening:
-            self.orb.set_state("listening")
-        elif self._persistent_mood != "normal":
-            self.orb.set_state(self._persistent_mood)
-        else:
-            self.orb.set_state("idle")
+        self.orb.set_state(resolve_orb_state(
+            self._nyx_state, self._current_mood, self._terminal_active,
+            self._listening, self._persistent_mood,
+        ))
+
+    def _apply_persistent_mood(self) -> bool:
+        """Tiñe TODAS las superficies en reposo con el mood persistente."""
+        m = self._persistent_mood
+        self._refresh_orb()
+        self.inputbar.set_mood(m)
+        if not self.backend.busy:  # no pisar el tinte de un turno en streaming
+            self.bubble.set_mood(m)
+        return False
 
     def _flash_mood(self, mood: str, hold_ms: int) -> bool:
         """Tiñe el orbe (alert/heated) un rato, sin depender del estado de turno.
@@ -262,7 +291,7 @@ class NyxApp(Gtk.Application):
 
     def _end_flash(self) -> bool:
         self._flash_id = None
-        self.inputbar.set_mood("normal")
+        self.inputbar.set_mood(self._persistent_mood)  # el reposo vuelve al mood persistente
         self._refresh_orb()
         return False
 
@@ -273,7 +302,8 @@ class NyxApp(Gtk.Application):
             if mood != "normal":
                 self._flash_mood(mood, ttl)
             return False
-        self.bubble.show_text(text, ttl, mood)
+        # un efímero "normal" hereda el tinte del mood persistente (el mood unifica todo)
+        self.bubble.show_text(text, ttl, mood if mood != "normal" else self._persistent_mood)
         if mood != "normal":
             self._flash_mood(mood, ttl)
         if speak:
@@ -299,6 +329,7 @@ class NyxApp(Gtk.Application):
     def _summon(self) -> bool:
         self._listening = True
         self._refresh_orb()
+        self.inputbar.set_mood(self._persistent_mood)  # la barra sale ya teñida del reposo
         self.inputbar.show()
         return False
 
@@ -348,7 +379,7 @@ class NyxApp(Gtk.Application):
         if self._flash_id is not None:  # cancela un flash de mood pendiente (say/notify/deny)
             GLib.source_remove(self._flash_id)
             self._flash_id = None
-        self.inputbar.set_mood("normal")
+        self.inputbar.set_mood(self._persistent_mood)
         self._turn_text = ""
         self.history.add_turn("operativo", text)
         self.tts.stop()  # corta cualquier voz anterior antes del nuevo turno
@@ -382,7 +413,11 @@ class NyxApp(Gtk.Application):
             if self._turn_text.strip():
                 self.history.add_turn("Nyx", self._turn_text, self._current_mood)
             self._turn_text = ""
-            self.inputbar.set_mood("normal")
+            if sig.cost_usd is not None:  # métricas para `status`/panel de control
+                self._cost_last = sig.cost_usd
+                self._cost_total += sig.cost_usd
+            self._turns += 1
+            self.inputbar.set_mood(self._persistent_mood)
             self._set_nyx("idle")
 
 
