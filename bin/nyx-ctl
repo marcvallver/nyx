@@ -14,6 +14,7 @@
   notifs [-n N] historial de notificaciones (incl. silenciadas)
   dnd [on|off]  no molestar (las críticas siguen pasando)
   watchers [on|off <nombre>]  capa proactiva: estado y toggles (opt-in)
+  panel       alterna el centro de control (átalo a Meta+N)
   config      list | get <ruta> | set <ruta> <valor>  (rutas punteadas, valor JSON)
   reload      relee config.json en el daemon (aplica lo aplicable en vivo)
   logs [-f]   cola del log del daemon
@@ -426,6 +427,9 @@ def main() -> int:
     elif cmd == "history":
         ok = send({"op": "history"})
         print("ok (toggle historial)" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "panel":
+        ok = send({"op": "panel"})
+        print("ok (toggle panel de control)" if ok else "daemon no responde (¿nyx-ctl on?)")
     elif cmd == "notify":
         app_name = args[1] if len(args) > 1 else ""
         summary = args[2] if len(args) > 2 else ""

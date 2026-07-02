@@ -21,6 +21,7 @@ from .backend import ClaudeBackend  # noqa: E402
 from .bubble import Bubble  # noqa: E402
 from .client import socket_path  # noqa: E402
 from .confirm import ConfirmPopup  # noqa: E402
+from .control import ControlPanel  # noqa: E402
 from .history import HistoryPanel  # noqa: E402
 from .inputbar import InputBar  # noqa: E402
 from .ipc import SocketServer  # noqa: E402
@@ -100,6 +101,7 @@ class NyxApp(Gtk.Application):
         self._nudge_backlog: list[Nudge] = []  # nudges retenidos mientras hay turno
         self.watchers = WatcherManager(self._config.get("watchers"), self._on_nudge)
         self.watchers.start()
+        self.control = ControlPanel(self)  # el drawer de control (Meta+N sugerido)
 
     def _start_notifyd(self) -> None:
         """Arranca el daemon D-Bus org.freedesktop.Notifications (opt-in por config)."""
@@ -186,6 +188,9 @@ class NyxApp(Gtk.Application):
             reply(self._reload_config())
         elif op == "watchers":
             reply({"ok": True, "watchers": self.watchers.status()})
+        elif op == "panel":
+            GLib.idle_add(self.control.toggle)
+            reply({"ok": True})
         elif op == "session_new":
             self.backend.reset_session()
             archived = chatlog.archive()
@@ -238,10 +243,7 @@ class NyxApp(Gtk.Application):
             reply({"ok": True})
         elif op == "mood":
             m = msg.get("mood") if msg.get("mood") in _MOODS else "normal"
-            self._persistent_mood = m
-            self._config = config.update({"mood": m})  # sobrevive reinicios
-            self.bubble.base_mood = m
-            GLib.idle_add(self._apply_persistent_mood)
+            self.set_persistent_mood(m)
             reply({"ok": True, "mood": m})
         elif op == "summon":
             GLib.idle_add(self._summon)
@@ -314,6 +316,14 @@ class NyxApp(Gtk.Application):
             self._nyx_state, self._current_mood, self._terminal_active,
             self._listening, self._persistent_mood,
         ))
+
+    def set_persistent_mood(self, mood: str) -> None:
+        """Fija el mood persistente (op mood / panel de control): config + superficies."""
+        m = mood if mood in _MOODS else "normal"
+        self._persistent_mood = m
+        self._config = config.update({"mood": m})  # sobrevive reinicios
+        self.bubble.base_mood = m
+        GLib.idle_add(self._apply_persistent_mood)
 
     def _apply_persistent_mood(self) -> bool:
         """Tiñe TODAS las superficies en reposo con el mood persistente."""
@@ -565,6 +575,7 @@ class NyxApp(Gtk.Application):
             # las notifs retenidas durante el turno salen cuando el bocadillo de la
             # respuesta se oculte (on_hidden → _notif_show_next), no antes
             GLib.idle_add(self._drain_nudges)  # propuestas retenidas durante el turno
+            GLib.idle_add(self.control.refresh_if_visible)  # coste/turnos al día
 
 
 def main() -> None:
