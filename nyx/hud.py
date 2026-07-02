@@ -185,10 +185,14 @@ class HudFrame(Gtk.DrawingArea):
         n = nmax * 0.5 + nmax * 0.5 * osc  # entre ~50% y 100% de nmax
         cr.set_source_rgba(*self.color, 0.95)
         cr.set_line_width(2.0)
+        # vértice redondeado (como los brackets del icono org.marc.nyx: V…Q…H):
+        # con la ventana a radius 8, la punta recta se perdía en la curva
+        rc = min(5.5, n * 0.45)
         for cx, cy, sx, sy in ((i, i, 1, 1), (w - i, i, -1, 1),
                                (i, h - i, 1, -1), (w - i, h - i, -1, -1)):
             cr.move_to(cx, cy + sy * n)
-            cr.line_to(cx, cy)
+            cr.line_to(cx, cy + sy * rc)
+            cr.curve_to(cx, cy, cx, cy, cx + sx * rc, cy)  # Q(vértice) del SVG
             cr.line_to(cx + sx * n, cy)
             cr.stroke()
 
