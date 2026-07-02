@@ -21,11 +21,11 @@ import sys
 import threading
 import urllib.request
 
+from . import config as _config
 from . import markup, phonetics
 
 VOICES_DIR = os.path.expanduser("~/.local/share/nyx/voices")
 DEFAULT_VOICE = os.path.join(VOICES_DIR, "es_ES-davefx-medium.onnx")
-CONFIG_PATH = os.path.expanduser("~/.config/nyx/config.json")
 
 # --- edge-tts (voces neuronales de Microsoft Edge, GRATIS, sin key/cuota) ---
 EDGE_BIN = os.path.expanduser("~/.local/share/nyx/venv-voice/bin/edge-tts")
@@ -50,33 +50,15 @@ def _gemini_key() -> str:
 
 
 def load_config() -> dict:
-    """Lee ~/.config/nyx/config.json (enrutado de audio, voz, toggles). {} si falta/roto."""
-    try:
-        with open(CONFIG_PATH, encoding="utf-8") as f:
-            cfg = json.load(f)
-            return cfg if isinstance(cfg, dict) else {}
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as e:  # JSONDecodeError ⊂ ValueError → no tragar en silencio
-        print(f"nyx: config.json no usable, usando defaults: {e}", file=sys.stderr)
-        return {}
+    """Sección `voice` del config unificado (`nyx.config`): mismas claves planas de
+    siempre (tts_enabled, tts_sink…), con defaults ya rellenos. Wrapper fino de compat."""
+    return _config.load().get("voice", {})
 
 
 def save_config(updates: dict) -> None:
-    """Mezcla `updates` en config.json y reescribe ATÓMICAMENTE (tmp + os.replace), sin perder
-    las demás claves (sink, voz, key…). Lo usa el toggle de voz para que la decisión de Marc
-    persista entre reinicios del daemon. ensure_ascii=False conserva tildes (p.ej. gemini_style)."""
-    cfg = load_config()
-    cfg.update(updates)
-    tmp = CONFIG_PATH + ".tmp"
-    try:
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-            f.write("\n")
-        os.replace(tmp, CONFIG_PATH)  # atómico: nunca deja el config a medias
-    except OSError as e:
-        print(f"nyx: no pude guardar config.json: {e}", file=sys.stderr)
+    """Persiste claves de voz en el config unificado (escritura atómica, no pierde
+    las demás secciones). Lo usa el toggle de voz para sobrevivir reinicios."""
+    _config.update({f"voice.{k}": v for k, v in updates.items()})
 
 
 def _resolve_voice(voice: str) -> str:

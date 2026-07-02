@@ -1,6 +1,6 @@
 import json
 
-import nyx.voice as voice
+import nyx.config as config
 from nyx.voice import (
     TTS_CHUNK_CHARS,
     VOICES_DIR,
@@ -97,40 +97,44 @@ def test_resolve_voice_forms():
 
 
 # --- toggle de voz: persistencia (que la decisión de Marc sobreviva al reinicio) ---
+# La voz vive en la sección `voice` del config unificado (nyx.config, schema v2).
 
 def test_save_config_merges_and_preserves(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
-    cfg.write_text('{"voice": "x", "tts_sink": "scarlett"}', encoding="utf-8")
-    monkeypatch.setattr(voice, "CONFIG_PATH", str(cfg))
+    cfg.write_text('{"voice": "x", "tts_sink": "scarlett"}', encoding="utf-8")  # legacy plano
+    monkeypatch.setattr(config, "CONFIG_PATH", str(cfg))
+    import nyx.voice as voice
     voice.save_config({"tts_enabled": True})
     out = json.loads(cfg.read_text(encoding="utf-8"))
-    assert out["tts_enabled"] is True
-    assert out["voice"] == "x" and out["tts_sink"] == "scarlett"  # no pierde otras claves
+    assert out["voice"]["tts_enabled"] is True
+    # el legacy se migra sin perder nada
+    assert out["voice"]["voice"] == "x" and out["voice"]["tts_sink"] == "scarlett"
 
 
 def test_save_config_creates_missing_file(tmp_path, monkeypatch):
     cfg = tmp_path / "sub" / "config.json"  # ni el dir existe
-    monkeypatch.setattr(voice, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(config, "CONFIG_PATH", str(cfg))
+    import nyx.voice as voice
     voice.save_config({"tts_enabled": False})
-    assert json.loads(cfg.read_text(encoding="utf-8"))["tts_enabled"] is False
+    assert json.loads(cfg.read_text(encoding="utf-8"))["voice"]["tts_enabled"] is False
 
 
 def test_toggle_flips_and_persists(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
-    monkeypatch.setattr(voice, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(config, "CONFIG_PATH", str(cfg))
     sp = TtsSpeaker()
     assert sp.enabled is False           # sin config → silenciada por defecto
     assert sp.toggle() is True           # alterna…
-    assert json.loads(cfg.read_text())["tts_enabled"] is True   # …y persiste a disco
+    assert json.loads(cfg.read_text())["voice"]["tts_enabled"] is True  # …y persiste
     assert sp.toggle() is False
-    assert json.loads(cfg.read_text())["tts_enabled"] is False
+    assert json.loads(cfg.read_text())["voice"]["tts_enabled"] is False
 
 
 def test_set_enabled_persist_is_opt_in(tmp_path, monkeypatch):
     cfg = tmp_path / "config.json"
-    monkeypatch.setattr(voice, "CONFIG_PATH", str(cfg))
+    monkeypatch.setattr(config, "CONFIG_PATH", str(cfg))
     sp = TtsSpeaker()
     sp.set_enabled(True)                 # persist=False por defecto → no toca disco
     assert not cfg.exists()
     sp.set_enabled(True, persist=True)
-    assert json.loads(cfg.read_text())["tts_enabled"] is True
+    assert json.loads(cfg.read_text())["voice"]["tts_enabled"] is True

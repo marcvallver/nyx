@@ -1,13 +1,38 @@
 {
-  "tts_enabled": true,
-  "tts_backend": "edge",
-  "edge_voice": "es-ES-XimenaNeural",
-  "tts_sink": "",
-  "stt_source": "",
-  "stt_model": "small",
-  "voice": "es_ES-davefx-medium",
-  "tts_speaker": "",
-  "gemini_tts_model": "gemini-2.5-flash-preview-tts",
-  "gemini_voice": "Kore",
-  "gemini_style": "Habla en español de España, con voz cálida, cercana y natural"
+  "version": 2,
+  "mood": "normal",
+  "backend": {
+    "model": "sonnet"
+  },
+  "ui": {
+    "orb": { "margin_top": 16, "margin_right": 18 },
+    "bubble": { "margin_top": 140, "margin_right": 18, "ttl_ms": 12000 },
+    "inputbar": { "margin_bottom": 220 },
+    "history": { "width": 320 }
+  },
+  "voice": {
+    "tts_enabled": true,
+    "tts_backend": "edge",
+    "edge_voice": "es-ES-XimenaNeural",
+    "tts_sink": "",
+    "stt_source": "",
+    "stt_model": "small",
+    "voice": "es_ES-davefx-medium",
+    "tts_speaker": "",
+    "gemini_tts_model": "gemini-2.5-flash-preview-tts",
+    "gemini_voice": "Kore",
+    "gemini_style": "Habla en español de España, con voz cálida, cercana y natural"
+  },
+  "notifications": {
+    "enabled": false,
+    "takeover": false,
+    "dnd": false,
+    "max_per_minute": 6,
+    "history_size": 500,
+    "rules": {}
+  },
+  "terminal_echo": {
+    "enabled": true
+  },
+  "watchers": {}
 }

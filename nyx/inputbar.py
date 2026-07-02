@@ -22,6 +22,7 @@ class InputBar:
     def __init__(
         self, app, on_submit: Callable[[str], None],
         on_dismiss: Callable[[], None] | None = None,
+        margin_bottom: int = 220,
     ):
         self.on_submit = on_submit
         self.on_dismiss = on_dismiss
@@ -29,7 +30,7 @@ class InputBar:
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
         LS.set_anchor(w, LS.Edge.BOTTOM, True)
-        LS.set_margin(w, LS.Edge.BOTTOM, 220)
+        LS.set_margin(w, LS.Edge.BOTTOM, int(margin_bottom))
         LS.set_keyboard_mode(w, LS.KeyboardMode.ON_DEMAND)
         LS.set_namespace(w, "nyx-input")
         w.set_decorated(False)
@@ -62,6 +63,10 @@ class InputBar:
 
         self.win = w
         w.set_visible(False)
+
+    def set_margins(self, margin_bottom: int) -> None:
+        """Reposiciona la barra en vivo (op `reload` tras cambiar ui.inputbar.*)."""
+        LS.set_margin(self.win, LS.Edge.BOTTOM, int(margin_bottom))
 
     def show(self) -> bool:
         self.entry.set_text("")

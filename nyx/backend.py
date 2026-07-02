@@ -18,7 +18,7 @@ from gi.repository import Gio, GLib
 
 from . import streamparse
 
-MODEL = "sonnet"  # rápido/barato para chat; Opus para tareas pesadas
+DEFAULT_MODEL = "sonnet"  # rápido/barato para chat; Opus para tareas pesadas
 
 # Perfil dedicado de Nyx (personal, fuera del repo): persona + permisos restringidos.
 # Marc los versiona en ~/dotfiles/.claude/nyx/ y los symlinka aquí.
@@ -58,8 +58,9 @@ def _resolve_claude() -> str | None:
 
 
 class ClaudeBackend:
-    def __init__(self, on_signal: Callable[[object], None]):
+    def __init__(self, on_signal: Callable[[object], None], model: str | None = None):
         self.on_signal = on_signal  # callback(signal), en el bucle GLib
+        self.model = model or DEFAULT_MODEL  # config backend.model; aplica al siguiente turno
         self.session_id: str | None = None
         self.busy = False
         self._parser = streamparse.StreamParser()
@@ -77,7 +78,7 @@ class ClaudeBackend:
             "-p", prompt,
             "--output-format", "stream-json",
             "--include-partial-messages", "--verbose",
-            "--model", MODEL,
+            "--model", self.model,
         ]
         if os.path.exists(_SETTINGS):
             argv += ["--settings", _SETTINGS]   # perfil aislado: permisos restringidos

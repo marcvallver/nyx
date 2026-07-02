@@ -37,8 +37,11 @@ def test_secret_access_deny():
 def test_gray_default():
     assert classify_bash("npm install")[0] == "gray"
     assert classify_bash("echo hi && something_else")[0] == "gray"  # chaining -> revisar
-    assert classify("Write", {"file_path": "/home/marc/Projects/nyx/x.py"})[0] == "gray"
-    assert classify("WebFetch", {"url": "https://x"})[0] == "gray"
+    # learned=set(): sin él, classify lee el ~/.config/nyx/allowed.json REAL de la
+    # máquina (con Write|* aprendido este test se volvía "allow") — hermetismo
+    assert classify("Write", {"file_path": "/home/marc/Projects/nyx/x.py"},
+                    learned=set())[0] == "gray"
+    assert classify("WebFetch", {"url": "https://x"}, learned=set())[0] == "gray"
 
 
 def test_read_tools_allow():

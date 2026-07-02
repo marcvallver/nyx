@@ -45,18 +45,19 @@ _WIDTH = 320
 
 
 class HistoryPanel:
-    def __init__(self, app):
+    def __init__(self, app, width: int = _WIDTH):
+        width = int(width)
         w = Gtk.ApplicationWindow(application=app)
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
         LS.set_anchor(w, LS.Edge.TOP, True)
         LS.set_anchor(w, LS.Edge.BOTTOM, True)
         LS.set_anchor(w, LS.Edge.LEFT, True)
-        LS.set_exclusive_zone(w, _WIDTH)
+        LS.set_exclusive_zone(w, width)
         LS.set_keyboard_mode(w, LS.KeyboardMode.NONE)
         LS.set_namespace(w, "nyx-history")
         w.set_decorated(False)
-        w.set_default_size(_WIDTH, -1)
+        w.set_default_size(width, -1)
 
         theme.apply_css(_PANEL_CSS)
 

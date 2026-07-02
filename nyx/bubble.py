@@ -27,14 +27,16 @@ _VALID_MOODS = ("normal", "alert", "heated")
 class Bubble:
     TYPE_MS = 18  # cadencia del tecleo
 
-    def __init__(self, app):
+    def __init__(self, app, margin_top: int = 140, margin_right: int = 18,
+                 ttl_ms: int = 12000):
+        self.default_ttl = int(ttl_ms)  # TTL por defecto de say/notify (config ui.bubble)
         w = Gtk.ApplicationWindow(application=app)
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
         LS.set_anchor(w, LS.Edge.TOP, True)
         LS.set_anchor(w, LS.Edge.RIGHT, True)
-        LS.set_margin(w, LS.Edge.TOP, 140)
-        LS.set_margin(w, LS.Edge.RIGHT, 18)
+        LS.set_margin(w, LS.Edge.TOP, int(margin_top))
+        LS.set_margin(w, LS.Edge.RIGHT, int(margin_right))
         LS.set_keyboard_mode(w, LS.KeyboardMode.NONE)
         LS.set_namespace(w, "nyx-bubble")
         w.set_decorated(False)
@@ -87,6 +89,11 @@ class Bubble:
         self._fade_id: int | None = None
         self._region_pending = False  # coalescing del recálculo de la región de input
         w.set_visible(False)
+
+    def set_margins(self, margin_top: int, margin_right: int) -> None:
+        """Reposiciona el bocadillo en vivo (op `reload` tras cambiar ui.bubble.*)."""
+        LS.set_margin(self.win, LS.Edge.TOP, int(margin_top))
+        LS.set_margin(self.win, LS.Edge.RIGHT, int(margin_right))
 
     def set_mood(self, mood: str) -> None:
         """Tiñe todo el bocadillo con el color del mood: glow + borde/brackets HUD + botón ×."""

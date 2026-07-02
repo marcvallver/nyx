@@ -7,12 +7,15 @@
   status      running | stopped
   tts [on|off] voz: sin arg alterna; on/off fija (persiste en config.json)
   say <texto> muestra un bocadillo
+  config      list | get <ruta> | set <ruta> <valor>  (rutas punteadas, valor JSON)
+  reload      relee config.json en el daemon (aplica lo aplicable en vivo)
   ping        diagnóstico
 
 Lanza el daemon con LD_PRELOAD (imprescindible para gtk4-layer-shell) y
 PYTHONPATH al repo, así que funciona estando symlinkado en ~/.local/bin.
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -20,6 +23,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.insert(0, REPO)
 
+from nyx import config as nyxconfig  # noqa: E402
 from nyx.client import daemon_running, send  # noqa: E402
 
 PRELOAD = "/usr/lib/libgtk4-layer-shell.so"
@@ -68,6 +72,47 @@ def stop() -> None:
     if os.path.exists(AUTOSTART):
         os.remove(AUTOSTART)
     print("nyx: OFF")
+
+
+def _print_reload(resp: dict) -> None:
+    applied = resp.get("applied") or []
+    restart = resp.get("restart_needed") or []
+    if not applied and not restart:
+        print("sin cambios")
+    if applied:
+        print("aplicado en vivo: " + ", ".join(applied))
+    if restart:
+        print("requiere reinicio: " + ", ".join(restart))
+
+
+def config_cmd(args: list[str]) -> int:
+    sub = args[0] if args else "list"
+    if sub == "list":
+        flat_eff = nyxconfig.flatten(nyxconfig.load())
+        flat_def = nyxconfig.flatten(nyxconfig.DEFAULTS)
+        for path in sorted(flat_eff):  # `*` = distinto del default
+            mark = "*" if flat_eff[path] != flat_def.get(path) else " "
+            print(f"{mark} {path} = {json.dumps(flat_eff[path], ensure_ascii=False)}")
+        return 0
+    if sub == "get" and len(args) >= 2:
+        value = nyxconfig.get_path(nyxconfig.load(), args[1])
+        print(json.dumps(value, ensure_ascii=False, indent=2))
+        return 0
+    if sub == "set" and len(args) >= 3:
+        raw = " ".join(args[2:])
+        try:
+            value = json.loads(raw)  # true/42/"texto"/{...} — JSON primero
+        except ValueError:
+            value = raw  # fallback: string pelado (nyx-ctl config set voice.edge_voice es-ES-…)
+        nyxconfig.update({args[1]: value})
+        resp = send({"op": "reload"})
+        if resp:
+            _print_reload(resp)
+        else:
+            print("guardado (daemon parado: se aplicará al arrancar)")
+        return 0
+    print("uso: nyx-ctl config [list | get <ruta> | set <ruta> <valor>]", file=sys.stderr)
+    return 1
 
 
 def main() -> int:
@@ -122,6 +167,14 @@ def main() -> int:
             print("daemon no responde (¿nyx-ctl on?)")
         else:
             print(f"mood: {resp.get('mood', '?')}")
+    elif cmd == "config":
+        return config_cmd(args[1:])
+    elif cmd == "reload":
+        resp = send({"op": "reload"})
+        if resp is None:
+            print("daemon no responde (¿nyx-ctl on?)")
+        else:
+            _print_reload(resp)
     elif cmd == "history":
         ok = send({"op": "history"})
         print("ok (toggle historial)" if ok else "daemon no responde (¿nyx-ctl on?)")
@@ -136,7 +189,8 @@ def main() -> int:
     else:
         print(
             "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>"
-            "|mood <normal|alert|heated>|tts [on|off]|history|notify <app> <summary> [body]|ping",
+            "|mood <normal|alert|heated>|tts [on|off]|history|notify <app> <summary> [body]"
+            "|config [list|get <ruta>|set <ruta> <valor>]|reload|ping",
             file=sys.stderr,
         )
         return 1

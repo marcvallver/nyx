@@ -4,7 +4,6 @@ barra de entrada, y la confirmación de acciones (Fase 4: híbrido con confirmac
 
 from __future__ import annotations
 
-import json
 import os
 
 import gi
@@ -13,7 +12,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from . import policy, streamparse  # noqa: E402
+from . import config, policy, streamparse  # noqa: E402
 from .activity import ActivityWatcher  # noqa: E402
 from .avatar import Orb  # noqa: E402
 from .backend import ClaudeBackend  # noqa: E402
@@ -26,17 +25,19 @@ from .ipc import SocketServer  # noqa: E402
 from .voice import SttListener, TtsSpeaker  # noqa: E402
 
 ACTIVITY_FILE = os.path.expanduser("~/.cache/claude-thinking.active")
-CONFIG_FILE = os.path.expanduser("~/.config/nyx/config.json")
 _MOODS = ("normal", "alert", "heated")
 
-
-def _load_config() -> dict:
-    try:
-        with open(CONFIG_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+# qué cambios de config se aplican EN VIVO con el op `reload`; el resto de rutas
+# conocidas requiere reiniciar el daemon (voz/STT: workers ya arrancados)
+_RELOAD_LIVE_PREFIXES = (
+    "ui.orb.", "ui.bubble.", "ui.inputbar.",
+    "backend.model",
+    "notifications.",
+    "terminal_echo.",
+    "voice.tts_enabled",
+    "mood",
+    "version",
+)
 
 
 class NyxApp(Gtk.Application):
@@ -45,7 +46,7 @@ class NyxApp(Gtk.Application):
 
     def do_activate(self):
         self.hold()
-        self._config = _load_config()
+        self._config = config.load()
         self._terminal_active = False
         self._nyx_state = "idle"
         self._current_mood = "normal"
@@ -53,18 +54,21 @@ class NyxApp(Gtk.Application):
         self._flash_id: int | None = None  # timer del flash de mood en `say`/notify/deny
         self._turn_text = ""  # texto de Nyx del turno en curso (para el historial)
         self._listening = False
-        self.orb = Orb(self)
-        self.bubble = Bubble(self)
-        self.history = HistoryPanel(self)
-        self.inputbar = InputBar(self, self.send_turn, self._dismiss_input)
+        ui = self._config["ui"]
+        self.orb = Orb(self, **ui["orb"])
+        self.bubble = Bubble(self, **ui["bubble"])
+        self.history = HistoryPanel(self, **ui["history"])
+        self.inputbar = InputBar(self, self.send_turn, self._dismiss_input,
+                                 **ui["inputbar"])
         self.confirm_popup = ConfirmPopup(self)
         self.tts = TtsSpeaker()
         self.stt = SttListener(self._on_stt_text)
-        self.backend = ClaudeBackend(self._on_signal)
+        self.backend = ClaudeBackend(self._on_signal,
+                                     model=config.get_path(self._config, "backend.model"))
         self.server = SocketServer(socket_path(), self.handle)
         self.activity = ActivityWatcher(ACTIVITY_FILE, self._on_terminal_activity)
         self.notifyd = None
-        if self._config.get("dbus_notifications"):  # opt-in: reemplaza al daemon de KDE
+        if config.get_path(self._config, "notifications.enabled"):
             self._start_notifyd()
 
     def _start_notifyd(self) -> None:
@@ -72,11 +76,47 @@ class NyxApp(Gtk.Application):
         try:
             from .notifyd import NotificationServer
 
-            takeover = bool(self._config.get("dbus_notifications_takeover"))
+            takeover = bool(config.get_path(self._config, "notifications.takeover"))
             self.notifyd = NotificationServer(self._on_dbus_notify, takeover=takeover)
             self.notifyd.start()
         except Exception:
             self.notifyd = None  # nunca tumbar el daemon por un fallo de D-Bus
+
+    def _stop_notifyd(self) -> None:
+        if self.notifyd is not None:
+            try:
+                self.notifyd.stop()
+            except Exception:
+                pass
+            self.notifyd = None
+
+    # --- recarga de config en caliente (op `reload`) ---
+    def _reload_config(self) -> dict:
+        """Relee config.json y aplica lo aplicable en vivo. Devuelve qué rutas
+        cambiaron: `applied` (ya en efecto) y `restart_needed` (piden reinicio)."""
+        old, new = self._config, config.load()
+        self._config = new
+        changed = config.diff_paths(old, new)
+        applied = [p for p in changed if p.startswith(_RELOAD_LIVE_PREFIXES)]
+        restart_needed = [p for p in changed if p not in applied]
+        if any(p.startswith("ui.orb.") for p in applied):
+            self.orb.set_margins(**new["ui"]["orb"])
+        if any(p.startswith("ui.bubble.margin") for p in applied):
+            self.bubble.set_margins(margin_top=new["ui"]["bubble"]["margin_top"],
+                                    margin_right=new["ui"]["bubble"]["margin_right"])
+        if "ui.bubble.ttl_ms" in applied:
+            self.bubble.default_ttl = int(new["ui"]["bubble"]["ttl_ms"])
+        if any(p.startswith("ui.inputbar.") for p in applied):
+            self.inputbar.set_margins(**new["ui"]["inputbar"])
+        if "backend.model" in applied:
+            self.backend.model = config.get_path(new, "backend.model")
+        if "voice.tts_enabled" in applied:
+            self.tts.set_enabled(bool(config.get_path(new, "voice.tts_enabled")))
+        if any(p.startswith("notifications.") for p in applied):
+            self._stop_notifyd()
+            if config.get_path(new, "notifications.enabled"):
+                self._start_notifyd()
+        return {"ok": True, "applied": applied, "restart_needed": restart_needed}
 
     # --- socket (handler diferido: debe llamar a reply) ---
     def handle(self, msg: dict, reply) -> None:
@@ -88,11 +128,13 @@ class NyxApp(Gtk.Application):
                    "session": self.backend.session_id})
         elif op == "say":
             text = (msg.get("text") or "").strip()
-            ttl = int(msg.get("ttl_ms") or 12000)
+            ttl = int(msg.get("ttl_ms") or self.bubble.default_ttl)
             mood = msg.get("mood") if msg.get("mood") in _MOODS else "normal"
             if text:
                 GLib.idle_add(self._ephemeral, text, ttl, mood, True)
             reply({"ok": True})
+        elif op == "reload":
+            reply(self._reload_config())
         elif op == "history":
             GLib.idle_add(self.history.toggle)
             reply({"ok": True})

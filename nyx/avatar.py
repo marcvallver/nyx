@@ -60,14 +60,14 @@ class Orb:
     MAXP = 80  # lado máximo del panel (deja margen para glitch/glow)
     FPS_MS = 16  # ~60 fps
 
-    def __init__(self, app):
+    def __init__(self, app, margin_top: int = 16, margin_right: int = 18):
         w = Gtk.ApplicationWindow(application=app)
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
         LS.set_anchor(w, LS.Edge.TOP, True)
         LS.set_anchor(w, LS.Edge.RIGHT, True)
-        LS.set_margin(w, LS.Edge.TOP, 16)
-        LS.set_margin(w, LS.Edge.RIGHT, 18)
+        LS.set_margin(w, LS.Edge.TOP, int(margin_top))
+        LS.set_margin(w, LS.Edge.RIGHT, int(margin_right))
         LS.set_keyboard_mode(w, LS.KeyboardMode.NONE)
         LS.set_namespace(w, "nyx-avatar")
         w.set_decorated(False)
@@ -100,6 +100,11 @@ class Orb:
                 surf.set_input_region(cairo.Region())
         except Exception:
             pass
+
+    def set_margins(self, margin_top: int, margin_right: int) -> None:
+        """Reposiciona el orbe en vivo (op `reload` tras cambiar ui.orb.*)."""
+        LS.set_margin(self.win, LS.Edge.TOP, int(margin_top))
+        LS.set_margin(self.win, LS.Edge.RIGHT, int(margin_right))
 
     def _reduced_motion(self) -> bool:
         try:
