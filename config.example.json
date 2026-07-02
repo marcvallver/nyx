@@ -5,7 +5,7 @@
     "model": "sonnet"
   },
   "ui": {
-    "orb": { "margin_top": 16, "margin_right": 18 },
+    "orb": { "margin_top": 16, "margin_right": 18, "corner": "tr" },
     "bubble": { "margin_top": 140, "margin_right": 18, "ttl_ms": 12000 },
     "inputbar": { "margin_bottom": 220 },
     "history": { "width": 320 }

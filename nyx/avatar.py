@@ -68,21 +68,31 @@ STATES = {
 IDLE_GLYPH = "✳"
 BRACKET_PERIOD = 4.4  # ciclo lento del alargar/achicar de los corner-brackets
 
+# esquina de reposo → (edge vertical, edge horizontal) del layer-shell
+CORNERS = {
+    "tl": (LS.Edge.TOP, LS.Edge.LEFT),
+    "tr": (LS.Edge.TOP, LS.Edge.RIGHT),
+    "bl": (LS.Edge.BOTTOM, LS.Edge.LEFT),
+    "br": (LS.Edge.BOTTOM, LS.Edge.RIGHT),
+}
+
+# Warp CRT (Meta+N y cambio de esquina): el orbe se apaga en cortina (colapso
+# vertical → línea → punto), hace *poof*, salta, y reaparece con la secuencia
+# invertida. El teleport ocurre al acabar "burst_out" (canvas vacío).
+_WARP_PHASES = (("collapse_v", 170), ("collapse_h", 110), ("burst_out", 90),
+                ("burst_in", 90), ("expand_h", 110), ("expand_v", 170))
+
 
 class Orb:
     SIZE = 108
     MAXP = 80  # lado máximo del panel (deja margen para glitch/glow)
     FPS_MS = 16  # ~60 fps
-    GLIDE_DUR_MS = 520  # deslizamiento al centro al abrir el panel de control
 
-    def __init__(self, app, margin_top: int = 16, margin_right: int = 18):
+    def __init__(self, app, margin_top: int = 16, margin_right: int = 18,
+                 corner: str = "tr"):
         w = Gtk.ApplicationWindow(application=app)
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
-        LS.set_anchor(w, LS.Edge.TOP, True)
-        LS.set_anchor(w, LS.Edge.RIGHT, True)
-        LS.set_margin(w, LS.Edge.TOP, int(margin_top))
-        LS.set_margin(w, LS.Edge.RIGHT, int(margin_right))
         LS.set_keyboard_mode(w, LS.KeyboardMode.NONE)
         LS.set_namespace(w, "nyx-avatar")
         w.set_decorated(False)
@@ -99,12 +109,15 @@ class Orb:
         self.win = w
         self.state = "idle"
         self.mood = "normal"  # tinte persistente (override de color en cualquier estado)
-        self._margin_right = int(margin_right)  # posición actual (anima el glide)
-        self._base_margin_right = int(margin_right)  # la esquina de reposo (config)
-        self._glide_id: int | None = None
-        self._glide_from = 0.0
-        self._glide_to = 0.0
-        self._glide_t = 0.0
+        self._corner = corner if corner in CORNERS else "tr"
+        self._margin_y = int(margin_top)  # margen del eje vertical de la esquina
+        self._margin_x = int(margin_right)  # posición actual en el eje horizontal
+        self._base_margin_x = int(margin_right)  # el reposo del eje horizontal (config)
+        self._apply_corner()
+        self._warp_id: int | None = None  # animación CRT en curso
+        self._warp_phase = 0
+        self._warp_t = 0.0
+        self._warp_apply = None  # callable que mueve la ventana en el punto ciego
         self.frame = 0
         self.s_scale = STATES["idle"]["scale"]
         self.s_alpha = STATES["idle"]["alpha"]
@@ -123,49 +136,110 @@ class Orb:
         except Exception:
             pass
 
-    def set_margins(self, margin_top: int, margin_right: int) -> None:
-        """Reposiciona el orbe en vivo (op `reload` tras cambiar ui.orb.*)."""
-        if self._glide_id is not None:  # un reload gana a un glide en curso
-            GLib.source_remove(self._glide_id)
-            self._glide_id = None
-        LS.set_margin(self.win, LS.Edge.TOP, int(margin_top))
-        self._base_margin_right = int(margin_right)
-        self._set_margin_right(int(margin_right))
+    def _apply_corner(self) -> None:
+        """Ancla la ventana a su esquina de reposo y aplica los márgenes."""
+        v_edge, h_edge = CORNERS.get(self._corner, CORNERS["tr"])
+        for e in (LS.Edge.TOP, LS.Edge.BOTTOM, LS.Edge.LEFT, LS.Edge.RIGHT):
+            LS.set_anchor(self.win, e, e in (v_edge, h_edge))
+            LS.set_margin(self.win, e, 0)
+        LS.set_margin(self.win, v_edge, int(self._margin_y))
+        self._set_margin_x(self._margin_x)
 
-    # --- glide: al abrir el panel, el orbe preside desde el centro (misma altura) ---
-    def glide_center(self, on: bool) -> bool:
-        """Desliza el orbe con ease-in-out al centro X de la pantalla (on=True) o
-        de vuelta a su esquina (on=False). La altura no cambia."""
-        target = self._center_margin_right() if on else self._base_margin_right
-        if target is None:
+    def set_margins(self, margin_top: int = 16, margin_right: int = 18,
+                    corner: str = "tr") -> None:
+        """Reposiciona el orbe en vivo (op `reload` tras cambiar ui.orb.*).
+        Cambiar de esquina viaja con el warp CRT; afinar márgenes es directo."""
+        corner = corner if corner in CORNERS else "tr"
+        corner_changed = corner != self._corner
+        self._margin_y = int(margin_top)
+        self._base_margin_x = int(margin_right)
+
+        def apply(c=corner):
+            self._corner = c
+            self._margin_x = self._base_margin_x
+            self._apply_corner()
+
+        if corner_changed:
+            self._warp_start(apply)
+        else:
+            self._warp_settle()
+            apply()
+
+    # --- warp CRT: apagado en cortina → poof → salto → poof → encendido ---
+    def warp_center(self, on: bool) -> bool:
+        """Al abrir el panel (on=True) el orbe hace el warp al centro X de la
+        pantalla (misma altura); al cerrarlo, de vuelta a su esquina."""
+        target = self._center_margin_x() if on else self._base_margin_x
+        if target is None or int(target) == self._margin_x:
             return False
-        if self._reduced_motion():  # respetar prefers-reduced-motion: salto directo
-            self._set_margin_right(target)
-            return False
-        self._glide_from = float(self._margin_right)
-        self._glide_to = float(target)
-        self._glide_t = 0.0
-        if self._glide_id is not None:
-            GLib.source_remove(self._glide_id)
-        self._glide_id = GLib.timeout_add(self.FPS_MS, self._glide_tick)
+        self._warp_start(lambda t=int(target): self._set_margin_x(t))
         return False
 
-    def _glide_tick(self) -> bool:
-        self._glide_t = min(1.0, self._glide_t + self.FPS_MS / self.GLIDE_DUR_MS)
-        ease = 0.5 - 0.5 * math.cos(math.pi * self._glide_t)  # easeInOutSine
-        self._set_margin_right(round(self._glide_from
-                                     + (self._glide_to - self._glide_from) * ease))
-        if self._glide_t >= 1.0:
-            self._glide_id = None
-            return False
+    def _warp_start(self, apply_fn) -> None:
+        if self._reduced_motion():  # respetar prefers-reduced-motion: salto directo
+            apply_fn()
+            self.area.queue_draw()
+            return
+        self._warp_settle()  # un warp nuevo consolida el anterior
+        self._warp_apply = apply_fn
+        self._warp_phase = 0
+        self._warp_t = 0.0
+        self._warp_id = GLib.timeout_add(self.FPS_MS, self._warp_tick)
+
+    def _warp_settle(self) -> None:
+        """Cancela un warp en curso dejando la ventana en su posición final."""
+        if self._warp_id is not None:
+            GLib.source_remove(self._warp_id)
+            self._warp_id = None
+        if self._warp_apply is not None:
+            self._warp_apply()
+            self._warp_apply = None
+
+    def _warp_tick(self) -> bool:
+        name, dur = _WARP_PHASES[self._warp_phase]
+        self._warp_t += self.FPS_MS / dur
+        if self._warp_t >= 1.0:
+            if name == "burst_out" and self._warp_apply is not None:
+                self._warp_apply()  # teleport: nadie ve moverse un canvas vacío
+                self._warp_apply = None
+            self._warp_phase += 1
+            self._warp_t = 0.0
+            if self._warp_phase >= len(_WARP_PHASES):
+                self._warp_id = None
+                self.area.queue_draw()
+                return False
+        self.area.queue_draw()
         return True
 
-    def _set_margin_right(self, px: int) -> None:
-        self._margin_right = int(px)
-        LS.set_margin(self.win, LS.Edge.RIGHT, int(px))
+    def _warp_fx(self) -> tuple[float, float, float]:
+        """(sx, sy, burst) del frame actual del warp; (1, 1, 0) en reposo.
+        sx/sy escalan el render completo; burst>0 dibuja el poof (0..1)."""
+        if self._warp_id is None:
+            return 1.0, 1.0, 0.0
+        name, _ = _WARP_PHASES[self._warp_phase]
+        t = min(1.0, self._warp_t)
+        ein = t * t
+        eout = 1.0 - (1.0 - t) * (1.0 - t)
+        if name == "collapse_v":   # el tile se aplasta a una línea (CRT off)
+            return 1.0 + 0.07 * eout, max(0.05, 1.0 - 0.95 * ein), 0.0
+        if name == "collapse_h":   # la línea se comprime hacia el centro
+            return max(0.0, 1.07 * (1.0 - ein)), 0.05, 0.0
+        if name == "burst_out":    # poof: anillo que se expande y muere
+            return 0.0, 0.0, 1.0 - t
+        if name == "burst_in":     # poof inverso: destello que converge
+            return 0.0, 0.0, t
+        if name == "expand_h":     # punto → línea
+            return 1.07 * eout, 0.05, 0.0
+        # expand_v: la línea abre a tile completo
+        return 1.07 - 0.07 * eout, max(0.05, 0.05 + 0.95 * eout), 0.0
 
-    def _center_margin_right(self) -> int | None:
-        """margin_right que deja el orbe centrado en X en su monitor."""
+    def _set_margin_x(self, px: int) -> None:
+        self._margin_x = int(px)
+        _, h_edge = CORNERS.get(self._corner, CORNERS["tr"])
+        LS.set_margin(self.win, h_edge, int(px))
+
+    def _center_margin_x(self) -> int | None:
+        """Margen horizontal que deja el orbe centrado en X en su monitor."""
         try:
             surf = self.win.get_surface()
             if surf is None:
@@ -249,6 +323,15 @@ class Orb:
     # --- composición ---
     def _draw(self, _area, cr, width, height):
         rm = self._reduced_motion()
+        sx, sy, burst = self._warp_fx()
+        if burst > 0.0:  # punto ciego del warp: solo el poof
+            self._burst(cr, width, height, burst)
+            return
+        cr.save()
+        if sx != 1.0 or sy != 1.0:  # warp CRT: el render entero se comprime
+            cr.translate(width / 2.0, height / 2.0)
+            cr.scale(max(sx, 0.001), max(sy, 0.001))
+            cr.translate(-width / 2.0, -height / 2.0)
         # superficie offscreen con el panel + glifo
         surf = cairo.ImageSurface(cairo.Format.ARGB32, width, height)
         pcr = cairo.Context(surf)
@@ -277,6 +360,31 @@ class Orb:
             cr.mask_surface(surf, -dx, -jitter)
             cr.restore()
         self._scanlines(cr, width, height)
+        cr.restore()  # cierra el transform del warp
+        if 0.0 < sy < 0.35:  # la línea de apagado CRT brilla al comprimirse
+            core = tuple(self.s_color[i] + (1.0 - self.s_color[i]) * 0.7
+                         for i in range(3))
+            half = (self.MAXP * self.s_scale * max(sx, 0.02)) / 2.0
+            a = (1.0 - sy / 0.35) * 0.9
+            cr.set_source_rgba(*core, a)
+            cr.rectangle(width / 2.0 - half, height / 2.0 - 1.2, half * 2.0, 2.4)
+            cr.fill()
+
+    def _burst(self, cr, w, h, k: float) -> None:
+        """El *poof* del warp: destello central + anillo, k=1 pleno → k=0 muerto."""
+        cx, cy = w / 2.0, h / 2.0
+        core = tuple(self.s_color[i] + (1.0 - self.s_color[i]) * 0.7 for i in range(3))
+        r = 8.0 + 20.0 * (1.0 - k)  # el anillo crece mientras se desvanece
+        cr.set_source_rgba(*self.s_color, 0.75 * k)
+        cr.set_line_width(2.2)
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.stroke()
+        g = cairo.RadialGradient(cx, cy, 0, cx, cy, 7.0)
+        g.add_color_stop_rgba(0, *core, 0.95 * k)
+        g.add_color_stop_rgba(1, *core, 0.0)
+        cr.set_source(g)
+        cr.arc(cx, cy, 7.0, 0, 2 * math.pi)
+        cr.fill()
 
     def _panel(self, pcr, w, h):
         ps = self.MAXP * self.s_scale

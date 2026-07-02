@@ -126,6 +126,18 @@ class ControlPanel:
             self._mood_btns[m] = btn
         box.append(moods_box)
 
+        # ── POSICIÓN DEL ORBE ──
+        box.append(self._section("POSICIÓN DEL ORBE"))
+        pos_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        self._pos_btns: dict[str, Gtk.Button] = {}
+        for c, sym in (("tl", "↖"), ("tr", "↗"), ("bl", "↙"), ("br", "↘")):
+            btn = Gtk.Button(label=sym)
+            btn.add_css_class("nyx-panel-mood")
+            btn.connect("clicked", lambda _b, cc=c: self._on_corner(cc))
+            pos_box.append(btn)
+            self._pos_btns[c] = btn
+        box.append(pos_box)
+
         # ── MODELO ──
         box.append(self._section("MODELO DEL BACKEND"))
         self._dd_model = Gtk.DropDown.new_from_strings(list(_MODELS))
@@ -230,6 +242,12 @@ class ControlPanel:
         self.app.set_persistent_mood(mood)
         GLib.idle_add(self.refresh)
 
+    def _on_corner(self, corner: str) -> None:
+        """Cambia la esquina de reposo: misma ruta que nyx-ctl config set
+        ui.orb.corner (el reload dispara el warp CRT del orbe)."""
+        config.update({"ui.orb.corner": corner})
+        GLib.idle_add(self._reload_and_refresh)
+
     def _on_model(self, *_):
         if self._updating:
             return
@@ -283,7 +301,7 @@ class ControlPanel:
         if self._visible:
             self.refresh()
         self.win.set_visible(self._visible)
-        self.app.orb.glide_center(self._visible)  # el orbe preside su panel
+        self.app.orb.warp_center(self._visible)  # el orbe preside su panel (warp CRT)
         return False
 
     def refresh(self) -> bool:
@@ -312,6 +330,11 @@ class ControlPanel:
             for m, btn in self._mood_btns.items():
                 btn.remove_css_class("nyx-panel-mood-active")
                 if m == app._persistent_mood:
+                    btn.add_css_class("nyx-panel-mood-active")
+            corner = config.get_path(cfg, "ui.orb.corner", "tr")
+            for c, btn in self._pos_btns.items():
+                btn.remove_css_class("nyx-panel-mood-active")
+                if c == corner:
                     btn.add_css_class("nyx-panel-mood-active")
             model = config.get_path(cfg, "backend.model", "sonnet")
             if model in _MODELS:

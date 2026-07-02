@@ -25,7 +25,9 @@ DEFAULTS: dict[str, Any] = {
         "model": "sonnet",  # rápido/barato para chat; opus para tareas pesadas
     },
     "ui": {
-        "orb": {"margin_top": 16, "margin_right": 18},
+        # corner: esquina de reposo (tl/tr/bl/br); los márgenes son relativos a
+        # ella (margin_top = eje vertical, margin_right = eje horizontal)
+        "orb": {"margin_top": 16, "margin_right": 18, "corner": "tr"},
         "bubble": {"margin_top": 140, "margin_right": 18, "ttl_ms": 12000},
         "inputbar": {"margin_bottom": 220},
         "history": {"width": 320},
