@@ -30,13 +30,6 @@ _PANEL_CSS = f"""
   background: rgba(10,15,30,0.96);
   padding: 18px 20px;
 }}
-.nyx-panel-title {{
-  color: {theme.TEAL};
-  font-family: {theme.FONT};
-  font-size: 13px;
-  font-weight: bold;
-  text-shadow: 0 0 8px rgba({theme.GLOW_RGB}, 0.7);
-}}
 .nyx-panel-section {{
   color: {theme.YELLOW};
   font-family: {theme.FONT};
@@ -94,14 +87,12 @@ class ControlPanel:
         w.set_title("Nyx · Control")
         w.set_default_size(_WIDTH, _HEIGHT)
         w.connect("close-request", self._on_close_request)
+        self._titlebar = hud.HudTitlebar("NYX · CONTROL", self._on_close_clicked)
+        w.set_titlebar(self._titlebar)
         theme.apply_css(_PANEL_CSS)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         box.add_css_class("nyx-panel")
-
-        title = Gtk.Label(label="◢ NYX · CONTROL", xalign=0.0)
-        title.add_css_class("nyx-panel-title")
-        box.append(title)
 
         # ── ESTADO ──
         box.append(self._section("ESTADO"))
@@ -264,6 +255,15 @@ class ControlPanel:
             return True  # ya gestionado
         return False
 
+    def _on_close_clicked(self) -> None:
+        """El × de la titlebar HUD: misma ruta que el close-request de KWin."""
+        self._on_close_request()
+
+    def set_mood(self, mood: str) -> None:
+        """Tiñe el marco HUD y la titlebar (llamado por app._apply_persistent_mood)."""
+        self._hud.set_mood(mood)
+        self._titlebar.set_mood(mood)
+
     # --- ciclo ---
     def refresh_if_visible(self) -> bool:
         if self._visible:
@@ -309,7 +309,7 @@ class ControlPanel:
             if model in _MODELS:
                 self._dd_model.set_selected(_MODELS.index(model))
             self._refresh_watchers()
-            self._hud.set_mood(app._persistent_mood)
+            self.set_mood(app._persistent_mood)
         finally:
             self._updating = False
         return False

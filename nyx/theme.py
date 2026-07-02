@@ -126,6 +126,39 @@ window {{ background: transparent; }}
 """
 
 
+TITLEBAR_CSS = f"""
+.nyx-titlebar {{
+  background: #090e1b;
+  border-bottom: 1px solid rgba({GLOW_RGB}, 0.35);
+  border-top-left-radius: 9px;
+  border-top-right-radius: 9px;
+  padding: 6px 12px;
+}}
+.nyx-titlebar-alert  {{ border-bottom-color: rgba({RED_RGB}, 0.65); }}
+.nyx-titlebar-heated {{ border-bottom-color: rgba({AMBER_RGB}, 0.60); }}
+.nyx-titlebar-glad   {{ border-bottom-color: rgba({GLAD_RGB}, 0.55); }}
+.nyx-titlebar-dim    {{ border-bottom-color: rgba({DIM_RGB}, 0.45); }}
+.nyx-titlebar-glyph {{
+  color: {TEAL};
+  font-size: 13px;
+  text-shadow: 0 0 7px rgba({GLOW_RGB}, 0.8);
+}}
+.nyx-titlebar-title {{
+  color: {TEAL};
+  font-family: {FONT};
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  text-shadow: 0 0 8px rgba({GLOW_RGB}, 0.6);
+}}
+/* el mood tiñe glifo + título (mismas variantes legibles que .nyx-close) */
+.nyx-titlebar-fg-alert  {{ color: #ff2e5f; text-shadow: 0 0 8px rgba({RED_RGB}, 0.9); }}
+.nyx-titlebar-fg-heated {{ color: {AMBER}; text-shadow: 0 0 8px rgba({AMBER_RGB}, 0.85); }}
+.nyx-titlebar-fg-glad   {{ color: {GLAD}; text-shadow: 0 0 8px rgba({GLAD_RGB}, 0.8); }}
+.nyx-titlebar-fg-dim    {{ color: {DIM}; text-shadow: 0 0 6px rgba({DIM_RGB}, 0.5); }}
+"""
+
+
 def apply_css(css: str) -> None:
     """Registra `css` a nivel de display (idempotente para clases namespaced nyx-*)."""
     from gi.repository import Gdk, Gtk

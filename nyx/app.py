@@ -88,11 +88,6 @@ class NyxApp(Gtk.Application):
             max_per_minute=config.get_path(self._config, "notifications.max_per_minute", 6))
         self._notif_current: dict | None = None
         self.bubble.on_hidden = self._on_bubble_hidden
-        if self._persistent_mood != "normal":  # restaurar el tinte tras reinicio
-            self.bubble.base_mood = self._persistent_mood
-            self.bubble.set_mood(self._persistent_mood)
-            self.orb.set_mood(self._persistent_mood)
-            self._refresh_orb()
         # hilo persistente de la sesión core: recuperar los últimos turnos al panel
         chatlog.rotate()
         for rec in chatlog.load_recent():
@@ -103,6 +98,9 @@ class NyxApp(Gtk.Application):
         self.watchers = WatcherManager(self._config.get("watchers"), self._on_nudge)
         self.watchers.start()
         self.control = ControlPanel(self)  # el drawer de control (Meta+N sugerido)
+        if self._persistent_mood != "normal":  # restaurar el tinte tras reinicio
+            self.bubble.base_mood = self._persistent_mood
+            GLib.idle_add(self._apply_persistent_mood)
 
     def _start_notifyd(self) -> None:
         """Arranca el daemon D-Bus org.freedesktop.Notifications (opt-in por config)."""
@@ -333,6 +331,8 @@ class NyxApp(Gtk.Application):
         self.orb.set_mood(m)
         self._refresh_orb()
         self.inputbar.set_mood(m)
+        self.control.set_mood(m)  # titlebars HUD de las ventanas normales
+        self.history.set_mood(m)
         if not self.backend.busy:  # no pisar el tinte de un turno en streaming
             self.bubble.set_mood(m)
         return False

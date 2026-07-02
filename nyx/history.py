@@ -10,19 +10,12 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
-from . import markup, theme  # noqa: E402
+from . import hud, markup, theme  # noqa: E402
 
 _PANEL_CSS = f"""
 .nyx-history-panel {{
   background: rgba(10,15,30,0.94);
   border-right: 1px solid rgba(85,234,212,0.18);
-}}
-.nyx-history-title {{
-  color: #55ead4;
-  font-family: {theme.FONT};
-  font-size: 11px;
-  opacity: 0.7;
-  padding: 8px 14px 4px;
 }}
 .nyx-history-user {{
   color: rgba(214,255,247,0.65);
@@ -60,15 +53,13 @@ class HistoryPanel:
         w.set_title("Nyx · Historial")
         w.set_default_size(width, 700)
         w.connect("close-request", self._on_close_request)
+        self._titlebar = hud.HudTitlebar("NYX · HISTORIAL", self._on_close_clicked)
+        w.set_titlebar(self._titlebar)
         key = Gtk.EventControllerKey()
         key.connect("key-pressed", self._on_key)
         w.add_controller(key)
 
         theme.apply_css(_PANEL_CSS)
-
-        title = Gtk.Label(label="▸ HISTORIAL")
-        title.add_css_class("nyx-history-title")
-        title.set_xalign(0.0)
 
         self._listbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
 
@@ -80,7 +71,6 @@ class HistoryPanel:
 
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         vbox.add_css_class("nyx-history-panel")
-        vbox.append(title)
         vbox.append(scroll)
 
         w.set_child(vbox)
@@ -101,6 +91,14 @@ class HistoryPanel:
             self.toggle()
             return True
         return False
+
+    def _on_close_clicked(self) -> None:
+        """El × de la titlebar HUD: misma ruta que el close-request de KWin."""
+        self._on_close_request()
+
+    def set_mood(self, mood: str) -> None:
+        """Tiñe la titlebar (llamado por app._apply_persistent_mood)."""
+        self._titlebar.set_mood(mood)
 
     def _on_key(self, _ctrl, keyval, _code, _state):
         if keyval == Gdk.KEY_Escape and self._visible:

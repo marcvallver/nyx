@@ -9,11 +9,14 @@ Solo anima mientras la caja está MAPEADA (visible) → cero CPU cuando está oc
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
 import gi
 
 gi.require_version("Gtk", "4.0")
 from gi.repository import GLib, Gtk  # noqa: E402
+
+from . import theme  # noqa: E402
 
 TEAL = (0.333, 0.918, 0.831)
 RED = (0.773, 0.0, 0.235)    # #c5003c — rojo de selección de Ghostty (mood alert)
@@ -32,6 +35,51 @@ def _rrect(cr, x, y, w, h, r):
     cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
     cr.arc(x + r, y + r, r, math.pi, 3 * math.pi / 2)
     cr.close_path()
+
+
+class HudTitlebar(Gtk.WindowHandle):
+    """Barra de título HUD para las ventanas normales de Nyx (Control, Historial).
+
+    Sustituye la headerbar CSD gris de GTK conservando lo que da KWin/GTK gratis:
+    WindowHandle mantiene el drag y el doble-click, y la ventana sigue teniendo
+    resize edges. Glifo + título mono con glow y botón × propio, todo teñible
+    por el mood (regla: toda superficie se tiñe, salvo que dañe legibilidad).
+    """
+
+    def __init__(self, title: str, on_close: Callable[[], None]):
+        super().__init__()
+        theme.apply_css(theme.TITLEBAR_CSS)
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        box.add_css_class("nyx-titlebar")
+        glyph = Gtk.Label(label="✳")
+        glyph.add_css_class("nyx-titlebar-glyph")
+        lbl = Gtk.Label(label=title, xalign=0.0)
+        lbl.add_css_class("nyx-titlebar-title")
+        lbl.set_hexpand(True)
+        close = Gtk.Button(label="×")
+        close.add_css_class("nyx-close")
+        close.connect("clicked", lambda *_: on_close())
+        box.append(glyph)
+        box.append(lbl)
+        box.append(close)
+        self.set_child(box)
+        self._box = box
+        self._fg = (glyph, lbl)
+        self._close = close
+
+    def set_mood(self, mood: str) -> None:
+        for m in theme.MOODS:
+            if m == "normal":
+                continue
+            self._box.remove_css_class(f"nyx-titlebar-{m}")
+            self._close.remove_css_class(f"nyx-close-{m}")
+            for w in self._fg:
+                w.remove_css_class(f"nyx-titlebar-fg-{m}")
+        if mood != "normal" and mood in theme.MOODS:
+            self._box.add_css_class(f"nyx-titlebar-{mood}")
+            self._close.add_css_class(f"nyx-close-{mood}")
+            for w in self._fg:
+                w.add_css_class(f"nyx-titlebar-fg-{mood}")
 
 
 class HudFrame(Gtk.DrawingArea):
