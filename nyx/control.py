@@ -27,7 +27,7 @@ _MODELS = ("sonnet", "opus", "haiku")
 
 _PANEL_CSS = f"""
 .nyx-panel {{
-  background: rgba(10,15,30,0.96);
+  background: transparent;  /* el fondo translúcido lo pinta window.nyx-win */
   padding: 18px 20px;
 }}
 .nyx-panel-section {{

@@ -14,7 +14,7 @@ from . import hud, markup, theme  # noqa: E402
 
 _PANEL_CSS = f"""
 .nyx-history-panel {{
-  background: rgba(10,15,30,0.94);
+  background: transparent;  /* el fondo translúcido lo pinta window.nyx-win */
   border-right: 1px solid rgba(85,234,212,0.18);
 }}
 .nyx-history-user {{

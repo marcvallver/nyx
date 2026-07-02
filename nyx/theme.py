@@ -131,8 +131,10 @@ TITLEBAR_CSS = f"""
    casar con las ventanas del sistema. Los brackets del HudFrame van con inset
    extra en el panel para que el clip redondeado no los corte. */
 window.nyx-win, window.nyx-win decoration {{ border-radius: 8px; }}
-/* mismo fondo que .nyx-panel: los márgenes interiores del scroll no desentonan */
-window.nyx-win {{ background: #0a0f1e; }}
+/* el FONDO vive aquí (los paneles internos van transparent para no acumular
+   alpha): 0.92 = la opacidad de kitty, el nivel de las ventanas del sistema.
+   La titlebar queda opaca como Klassy (ActiveTitleBarOpacity=100). */
+window.nyx-win {{ background: rgba(10,15,30,0.92); }}
 .nyx-titlebar {{
   background: #090e1b;
   border-bottom: 1px solid rgba({GLOW_RGB}, 0.35);
