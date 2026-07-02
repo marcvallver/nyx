@@ -49,6 +49,7 @@ class NyxApp(Gtk.Application):
         self._terminal_active = False
         self._nyx_state = "idle"
         self._current_mood = "normal"
+        self._persistent_mood = "normal"
         self._flash_id: int | None = None  # timer del flash de mood en `say`/notify/deny
         self._turn_text = ""  # texto de Nyx del turno en curso (para el historial)
         self._listening = False
@@ -123,6 +124,11 @@ class NyxApp(Gtk.Application):
         elif op == "listen_stop":
             GLib.idle_add(self._listen_stop)
             reply({"ok": True})
+        elif op == "mood":
+            m = msg.get("mood") if msg.get("mood") in _MOODS else "normal"
+            self._persistent_mood = m
+            GLib.idle_add(self._refresh_orb)
+            reply({"ok": True, "mood": m})
         elif op == "summon":
             GLib.idle_add(self._summon)
             reply({"ok": True})
@@ -194,6 +200,8 @@ class NyxApp(Gtk.Application):
             self.orb.set_state("thinking")
         elif self._listening:
             self.orb.set_state("listening")
+        elif self._persistent_mood in ("alert", "heated"):
+            self.orb.set_state(self._persistent_mood)
         else:
             self.orb.set_state("idle")
 

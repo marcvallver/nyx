@@ -112,6 +112,16 @@ def main() -> int:
     elif cmd == "listen_stop":
         ok = send({"op": "listen_stop"})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "mood":
+        arg = (args[1].lower() if args[1:] else "").strip()
+        if arg not in ("normal", "alert", "heated"):
+            print("uso: nyx-ctl mood <normal|alert|heated>", file=sys.stderr)
+            return 1
+        resp = send({"op": "mood", "mood": arg})
+        if resp is None:
+            print("daemon no responde (¿nyx-ctl on?)")
+        else:
+            print(f"mood: {resp.get('mood', '?')}")
     elif cmd == "history":
         ok = send({"op": "history"})
         print("ok (toggle historial)" if ok else "daemon no responde (¿nyx-ctl on?)")
@@ -126,7 +136,7 @@ def main() -> int:
     else:
         print(
             "uso: nyx-ctl on|off|toggle|status|summon|listen|ask <texto>|say <texto>"
-            "|tts [on|off]|history|notify <app> <summary> [body]|ping",
+            "|mood <normal|alert|heated>|tts [on|off]|history|notify <app> <summary> [body]|ping",
             file=sys.stderr,
         )
         return 1
