@@ -113,9 +113,10 @@ filtrando los turnos del propio backend por session_id.
   tiñe el reposo y sobrevive reinicios; la decisión de estado del orbe es pura
   ([`nyx/moodstate.py`](../nyx/moodstate.py)). El gate dispara `mood=alert` ante
   un deny. La persona declara los marcadores en `~/.config/nyx/persona.md`.
-- **Historial.** `history.py` — panel layer-shell lateral (izquierda,
-  `exclusive_zone`): turnos (recargados de `chat.jsonl` al arrancar) +
-  notificaciones compactas (las silenciadas también, marcadas). Toggle Meta+H.
+- **Historial.** `history.py` — VENTANA NORMAL del sistema (KWin la decora →
+  arrastrable/reescalable): turnos (recargados de `chat.jsonl` al arrancar) +
+  notificaciones compactas (las silenciadas también, marcadas). Toggle Meta+H,
+  Esc o el × la ocultan (no destruyen).
 - **Notificaciones v2.** `notifyd.py` implementa `org.freedesktop.Notifications`
   (capabilities `actions|body|persistence`) — opt-in `notifications.enabled` +
   `takeover`. Pipeline único (op `notify` y D-Bus):
@@ -152,9 +153,12 @@ calla. Todo opt-in por config (`watchers.<nombre>.enabled`).
 
 ## Centro de control — `nyx/control.py`
 
-Drawer layer-shell anclado a la derecha (espejo del historial), HudFrame, teñido
-por el mood persistente. Estado (modelo/sesión/coste), interruptores en vivo,
-mood, modelo, watchers y acciones. Op `panel` / `nyx-ctl panel` (Meta+N sugerido).
+VENTANA NORMAL del sistema (arrastrable/reescalable/recolocable por KWin),
+HudFrame dentro, teñida por el mood persistente. Al abrirse, el orbe se desliza
+con ease-in-out al centro X de la pantalla (misma altura) y al cerrarse vuelve a
+su esquina (`Orb.glide_center`; respeta prefers-reduced-motion). Estado
+(modelo/sesión/coste), interruptores en vivo, mood, modelo, watchers y acciones.
+Op `panel` / `nyx-ctl panel` (Meta+N sugerido); Esc o el × ocultan.
 
 ## Lifecycle
 

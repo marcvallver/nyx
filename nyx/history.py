@@ -1,15 +1,14 @@
-"""Panel de historial de chat de Nyx: ventana layer-shell lateral que acumula
-todos los turnos del daemon (user + Nyx). Se muestra/oculta con toggle().
-Los turnos se guardan en memoria; se vacía al reiniciar el daemon."""
+"""Panel de historial de chat de Nyx: VENTANA NORMAL del sistema (KWin la
+decora con Klassy → arrastrable, reescalable y recolocable). Acumula los turnos
+del daemon (operativo ⇄ Nyx, recargados del hilo persistente al arrancar) y las
+notificaciones compactas. Se muestra/oculta con toggle() (Meta+H)."""
 
 from __future__ import annotations
 
 import gi
 
 gi.require_version("Gtk", "4.0")
-gi.require_version("Gtk4LayerShell", "1.0")
-from gi.repository import GLib, Gtk  # noqa: E402
-from gi.repository import Gtk4LayerShell as LS  # noqa: E402
+from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from . import markup, theme  # noqa: E402
 
@@ -56,17 +55,14 @@ _WIDTH = 320
 class HistoryPanel:
     def __init__(self, app, width: int = _WIDTH):
         width = int(width)
+        # ventana NORMAL (no layer-shell): KWin la decora, mueve, escala y snapea
         w = Gtk.ApplicationWindow(application=app)
-        LS.init_for_window(w)
-        LS.set_layer(w, LS.Layer.OVERLAY)
-        LS.set_anchor(w, LS.Edge.TOP, True)
-        LS.set_anchor(w, LS.Edge.BOTTOM, True)
-        LS.set_anchor(w, LS.Edge.LEFT, True)
-        LS.set_exclusive_zone(w, width)
-        LS.set_keyboard_mode(w, LS.KeyboardMode.NONE)
-        LS.set_namespace(w, "nyx-history")
-        w.set_decorated(False)
-        w.set_default_size(width, -1)
+        w.set_title("Nyx · Historial")
+        w.set_default_size(width, 700)
+        w.connect("close-request", self._on_close_request)
+        key = Gtk.EventControllerKey()
+        key.connect("key-pressed", self._on_key)
+        w.add_controller(key)
 
         theme.apply_css(_PANEL_CSS)
 
@@ -97,6 +93,19 @@ class HistoryPanel:
         self.win.set_visible(self._visible)
         if self._visible:
             GLib.idle_add(self._scroll_to_bottom)  # tras el relayout del frame, no antes
+        return False
+
+    def _on_close_request(self, *_) -> bool:
+        """El × de la decoración oculta (no destruye)."""
+        if self._visible:
+            self.toggle()
+            return True
+        return False
+
+    def _on_key(self, _ctrl, keyval, _code, _state):
+        if keyval == Gdk.KEY_Escape and self._visible:
+            self.toggle()
+            return True
         return False
 
     def add_turn(self, role: str, text: str, mood: str = "normal") -> None:

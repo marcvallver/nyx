@@ -73,6 +73,7 @@ class Orb:
     SIZE = 108
     MAXP = 80  # lado máximo del panel (deja margen para glitch/glow)
     FPS_MS = 16  # ~60 fps
+    GLIDE_DUR_MS = 520  # deslizamiento al centro al abrir el panel de control
 
     def __init__(self, app, margin_top: int = 16, margin_right: int = 18):
         w = Gtk.ApplicationWindow(application=app)
@@ -98,6 +99,12 @@ class Orb:
         self.win = w
         self.state = "idle"
         self.mood = "normal"  # tinte persistente (override de color en cualquier estado)
+        self._margin_right = int(margin_right)  # posición actual (anima el glide)
+        self._base_margin_right = int(margin_right)  # la esquina de reposo (config)
+        self._glide_id: int | None = None
+        self._glide_from = 0.0
+        self._glide_to = 0.0
+        self._glide_t = 0.0
         self.frame = 0
         self.s_scale = STATES["idle"]["scale"]
         self.s_alpha = STATES["idle"]["alpha"]
@@ -118,8 +125,57 @@ class Orb:
 
     def set_margins(self, margin_top: int, margin_right: int) -> None:
         """Reposiciona el orbe en vivo (op `reload` tras cambiar ui.orb.*)."""
+        if self._glide_id is not None:  # un reload gana a un glide en curso
+            GLib.source_remove(self._glide_id)
+            self._glide_id = None
         LS.set_margin(self.win, LS.Edge.TOP, int(margin_top))
-        LS.set_margin(self.win, LS.Edge.RIGHT, int(margin_right))
+        self._base_margin_right = int(margin_right)
+        self._set_margin_right(int(margin_right))
+
+    # --- glide: al abrir el panel, el orbe preside desde el centro (misma altura) ---
+    def glide_center(self, on: bool) -> bool:
+        """Desliza el orbe con ease-in-out al centro X de la pantalla (on=True) o
+        de vuelta a su esquina (on=False). La altura no cambia."""
+        target = self._center_margin_right() if on else self._base_margin_right
+        if target is None:
+            return False
+        if self._reduced_motion():  # respetar prefers-reduced-motion: salto directo
+            self._set_margin_right(target)
+            return False
+        self._glide_from = float(self._margin_right)
+        self._glide_to = float(target)
+        self._glide_t = 0.0
+        if self._glide_id is not None:
+            GLib.source_remove(self._glide_id)
+        self._glide_id = GLib.timeout_add(self.FPS_MS, self._glide_tick)
+        return False
+
+    def _glide_tick(self) -> bool:
+        self._glide_t = min(1.0, self._glide_t + self.FPS_MS / self.GLIDE_DUR_MS)
+        ease = 0.5 - 0.5 * math.cos(math.pi * self._glide_t)  # easeInOutSine
+        self._set_margin_right(round(self._glide_from
+                                     + (self._glide_to - self._glide_from) * ease))
+        if self._glide_t >= 1.0:
+            self._glide_id = None
+            return False
+        return True
+
+    def _set_margin_right(self, px: int) -> None:
+        self._margin_right = int(px)
+        LS.set_margin(self.win, LS.Edge.RIGHT, int(px))
+
+    def _center_margin_right(self) -> int | None:
+        """margin_right que deja el orbe centrado en X en su monitor."""
+        try:
+            surf = self.win.get_surface()
+            if surf is None:
+                return None
+            monitor = self.win.get_display().get_monitor_at_surface(surf)
+            if monitor is None:
+                return None
+            return max(0, (monitor.get_geometry().width - self.SIZE) // 2)
+        except Exception:
+            return None
 
     def _reduced_motion(self) -> bool:
         try:

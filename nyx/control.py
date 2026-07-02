@@ -1,5 +1,8 @@
-"""Centro de control de Nyx: drawer layer-shell anclado a la DERECHA (espejo del
-historial), estética HUD cyberpunk (HudFrame + scanlines) teñida por el mood.
+"""Centro de control de Nyx: VENTANA NORMAL del sistema (KWin la decora con
+Klassy → arrastrable, reescalable y recolocable como cualquier app), estética
+HUD cyberpunk dentro (HudFrame + scanlines) teñida por el mood. Al abrirse, el
+orbe se desliza con ease al centro de la pantalla (misma altura) y al cerrarla
+vuelve a su esquina.
 
 Estado del daemon (modelo, sesión, coste), interruptores en vivo (voz, notifs,
 takeover, DND, eco de terminal), mood persistente, watchers y acciones. Todos
@@ -14,13 +17,12 @@ import subprocess
 import gi
 
 gi.require_version("Gtk", "4.0")
-gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import Gdk, GLib, Gtk  # noqa: E402
-from gi.repository import Gtk4LayerShell as LS  # noqa: E402
 
 from . import config, hud, theme  # noqa: E402
 
-_WIDTH = 380
+_WIDTH = 400
+_HEIGHT = 660
 _MODELS = ("sonnet", "opus", "haiku")
 
 _PANEL_CSS = f"""
@@ -87,16 +89,11 @@ class ControlPanel:
     def __init__(self, app):
         self.app = app
         self._updating = False  # refresco programático: no disparar handlers
+        # ventana NORMAL (no layer-shell): KWin la decora, mueve, escala y snapea
         w = Gtk.ApplicationWindow(application=app)
-        LS.init_for_window(w)
-        LS.set_layer(w, LS.Layer.OVERLAY)
-        LS.set_anchor(w, LS.Edge.TOP, True)
-        LS.set_anchor(w, LS.Edge.BOTTOM, True)
-        LS.set_anchor(w, LS.Edge.RIGHT, True)
-        LS.set_keyboard_mode(w, LS.KeyboardMode.ON_DEMAND)
-        LS.set_namespace(w, "nyx-control")
-        w.set_decorated(False)
-        w.set_default_size(_WIDTH, -1)
+        w.set_title("Nyx · Control")
+        w.set_default_size(_WIDTH, _HEIGHT)
+        w.connect("close-request", self._on_close_request)
         theme.apply_css(_PANEL_CSS)
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -260,6 +257,13 @@ class ControlPanel:
             return True
         return False
 
+    def _on_close_request(self, *_) -> bool:
+        """El × de la decoración oculta (no destruye) y devuelve el orbe a su sitio."""
+        if self._visible:
+            self.toggle()
+            return True  # ya gestionado
+        return False
+
     # --- ciclo ---
     def refresh_if_visible(self) -> bool:
         if self._visible:
@@ -271,6 +275,7 @@ class ControlPanel:
         if self._visible:
             self.refresh()
         self.win.set_visible(self._visible)
+        self.app.orb.glide_center(self._visible)  # el orbe preside su panel
         return False
 
     def refresh(self) -> bool:
