@@ -1,0 +1,15 @@
+# Desktop file de Nyx. NO se instala solo: `nyx-ctl install` renderiza @REPO@ y
+# lo copia a ~/.local/share/applications/. Su nombre casa con el application_id
+# GTK (org.marc.nyx) — así KWin/Wayland resuelve el ICONO de las ventanas de Nyx
+# (panel de control, historial) y da una entrada de lanzador que abre el panel.
+[Desktop Entry]
+Type=Application
+Name=Nyx
+GenericName=Asistente de escritorio
+Comment=Panel de control de Nyx
+Exec=@REPO@/bin/nyx-ctl panel
+Icon=org.marc.nyx
+Terminal=false
+StartupNotify=false
+Categories=Utility;
+Keywords=nyx;asistente;claude;

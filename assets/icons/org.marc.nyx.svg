@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Icono de app de Nyx: el tile HUD del orbe — midnight, corner-brackets teal,
+     sparkle ✳ con aberración RGB cian/magenta (paleta themes/nyx/colors.toml). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.6" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <radialGradient id="core" cx="50%" cy="46%" r="60%">
+      <stop offset="0%" stop-color="#132436"/>
+      <stop offset="100%" stop-color="#0d1426"/>
+    </radialGradient>
+  </defs>
+
+  <!-- tile midnight -->
+  <rect x="7" y="7" width="114" height="114" rx="24" fill="url(#core)"/>
+  <rect x="7" y="7" width="114" height="114" rx="24" fill="none"
+        stroke="#55ead4" stroke-width="3" opacity="0.5"/>
+
+  <!-- scanlines sutiles -->
+  <g fill="#000000" opacity="0.14">
+    <rect x="12" y="26" width="104" height="2.5"/>
+    <rect x="12" y="44" width="104" height="2.5"/>
+    <rect x="12" y="62" width="104" height="2.5"/>
+    <rect x="12" y="80" width="104" height="2.5"/>
+    <rect x="12" y="98" width="104" height="2.5"/>
+  </g>
+
+  <!-- corner-brackets (HudFrame) -->
+  <g stroke="#55ead4" stroke-width="5.5" fill="none" stroke-linecap="round"
+     filter="url(#glow)">
+    <path d="M 20 40 V 26 Q 20 20 26 20 H 40"/>
+    <path d="M 88 20 H 102 Q 108 20 108 26 V 40"/>
+    <path d="M 108 88 V 102 Q 108 108 102 108 H 88"/>
+    <path d="M 40 108 H 26 Q 20 108 20 102 V 88"/>
+  </g>
+
+  <!-- aberración RGB: ecos cian/magenta del sparkle -->
+  <g stroke-width="7" stroke-linecap="round" opacity="0.55">
+    <g transform="translate(67,64)" stroke="#00e6ff">
+      <line x1="0" y1="-25" x2="0" y2="25"/>
+      <line x1="-21.7" y1="-12.5" x2="21.7" y2="12.5"/>
+      <line x1="-21.7" y1="12.5" x2="21.7" y2="-12.5"/>
+    </g>
+    <g transform="translate(61,64)" stroke="#ff2699">
+      <line x1="0" y1="-25" x2="0" y2="25"/>
+      <line x1="-21.7" y1="-12.5" x2="21.7" y2="12.5"/>
+      <line x1="-21.7" y1="12.5" x2="21.7" y2="-12.5"/>
+    </g>
+  </g>
+
+  <!-- sparkle ✳ teal (el glifo del orbe) -->
+  <g transform="translate(64,64)" stroke="#55ead4" stroke-width="7.5"
+     stroke-linecap="round" filter="url(#glow)">
+    <line x1="0" y1="-25" x2="0" y2="25"/>
+    <line x1="-21.7" y1="-12.5" x2="21.7" y2="12.5"/>
+    <line x1="-21.7" y1="12.5" x2="21.7" y2="-12.5"/>
+  </g>
+  <circle cx="64" cy="64" r="5" fill="#d6fff7" filter="url(#glow)"/>
+</svg>

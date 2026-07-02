@@ -479,6 +479,9 @@ class NyxApp(Gtk.Application):
         self._refresh_orb()
         self.inputbar.set_mood(self._persistent_mood)  # la barra sale ya teñida del reposo
         self.inputbar.show()
+        # En Wayland, grab_focus() después de set_visible falla por política de ventanas.
+        # Hacerlo en idle_add da tiempo a que la superficie se mapee primero.
+        GLib.idle_add(lambda: self.inputbar.entry.grab_focus() or False)
         return False
 
     def _dismiss_input(self) -> None:

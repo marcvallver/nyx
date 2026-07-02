@@ -42,6 +42,9 @@ LOG = os.path.expanduser("~/.cache/nyx/daemon.log")
 UNIT = os.path.expanduser("~/.config/systemd/user/nyx.service")
 DBUS_SERVICE = os.path.expanduser(
     "~/.local/share/dbus-1/services/org.freedesktop.Notifications.service")
+APP_ICON = os.path.expanduser(
+    "~/.local/share/icons/hicolor/scalable/apps/org.marc.nyx.svg")
+DESKTOP_FILE = os.path.expanduser("~/.local/share/applications/org.marc.nyx.desktop")
 
 
 def unit_installed() -> bool:
@@ -68,6 +71,15 @@ def install(notifyd: bool = False) -> None:
         os.remove(AUTOSTART)
         print("autostart .desktop retirado (lo sustituye la unit)")
     print(f"unit instalada y habilitada: {UNIT}")
+    # icono de app + desktop file (KWin resuelve el icono de las ventanas por app-id)
+    os.makedirs(os.path.dirname(APP_ICON), exist_ok=True)
+    import shutil as _shutil
+    _shutil.copyfile(os.path.join(REPO, "assets", "icons", "org.marc.nyx.svg"), APP_ICON)
+    os.makedirs(os.path.dirname(DESKTOP_FILE), exist_ok=True)
+    with open(DESKTOP_FILE, "w", encoding="utf-8") as f:
+        f.write(_render_template("org.marc.nyx.desktop"))
+    subprocess.run(["kbuildsycoca6"], check=False, capture_output=True)  # refresca KDE
+    print(f"icono + lanzador instalados: {DESKTOP_FILE}")
     if notifyd:
         os.makedirs(os.path.dirname(DBUS_SERVICE), exist_ok=True)
         with open(DBUS_SERVICE, "w", encoding="utf-8") as f:
@@ -80,7 +92,8 @@ def install(notifyd: bool = False) -> None:
 def uninstall() -> None:
     subprocess.run(["systemctl", "--user", "disable", "--now", "nyx.service"],
                    check=False, capture_output=True)
-    for path, label in ((UNIT, "unit"), (DBUS_SERVICE, "activación D-Bus")):
+    for path, label in ((UNIT, "unit"), (DBUS_SERVICE, "activación D-Bus"),
+                        (APP_ICON, "icono"), (DESKTOP_FILE, "lanzador")):
         if os.path.exists(path):
             os.remove(path)
             print(f"{label} retirada: {path}")

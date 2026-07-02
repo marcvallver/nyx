@@ -71,7 +71,6 @@ class InputBar:
     def show(self) -> bool:
         self.entry.set_text("")
         self.win.set_visible(True)
-        self.entry.grab_focus()
         return False  # usable como callback de GLib.idle_add
 
     def hide(self) -> None:
