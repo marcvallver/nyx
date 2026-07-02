@@ -37,6 +37,39 @@ def _rrect(cr, x, y, w, h, r):
     cr.close_path()
 
 
+class _TitlebarIcon(Gtk.DrawingArea):
+    """Icono de botón de titlebar (min/max/close) dibujado con Cairo: mismo
+    trazo y mismo tamaño los tres (los glifos de fuente –/□/× salían dispares).
+    El color se hereda del CSS del botón (get_color → respeta mood y hover)."""
+
+    def __init__(self, kind: str):
+        super().__init__()
+        self.set_content_width(14)
+        self.set_content_height(14)
+        self._kind = kind
+        self.set_draw_func(self._draw)
+
+    def _draw(self, _area, cr, w, h):
+        c = self.get_color()
+        cx, cy = w / 2.0, h / 2.0
+        r = 3.5  # semilado: caja de 7px, como la cruz del × de 15px de fuente
+        # fake-glow (pasada gruesa translúcida) + trazo nítido, mismo path
+        for lw, alpha in ((4.0, 0.30), (1.4, 1.0)):
+            cr.set_line_width(lw)
+            cr.set_source_rgba(c.red, c.green, c.blue, c.alpha * alpha)
+            if self._kind == "min":
+                cr.move_to(cx - r, cy)
+                cr.line_to(cx + r, cy)
+            elif self._kind == "max":
+                cr.rectangle(cx - r, cy - r, 2 * r, 2 * r)
+            else:  # close
+                cr.move_to(cx - r, cy - r)
+                cr.line_to(cx + r, cy + r)
+                cr.move_to(cx - r, cy + r)
+                cr.line_to(cx + r, cy - r)
+            cr.stroke()
+
+
 class HudTitlebar(Gtk.WindowHandle):
     """Barra de título HUD para las ventanas normales de Nyx (Control, Historial).
 
@@ -56,16 +89,17 @@ class HudTitlebar(Gtk.WindowHandle):
         lbl = Gtk.Label(label=title, xalign=0.0)
         lbl.add_css_class("nyx-titlebar-title")
         lbl.set_hexpand(True)
-        mini = Gtk.Button(label="–")
+        mini = Gtk.Button(child=_TitlebarIcon("min"))
         mini.connect("clicked", self._on_minimize)
-        maxi = Gtk.Button(label="□")
+        maxi = Gtk.Button(child=_TitlebarIcon("max"))
         maxi.connect("clicked", self._on_maximize)
-        close = Gtk.Button(label="×")
+        close = Gtk.Button(child=_TitlebarIcon("close"))
         close.connect("clicked", lambda *_: on_close())
         box.append(glyph)
         box.append(lbl)
         for btn in (mini, maxi, close):
             btn.add_css_class("nyx-close")
+            btn.add_css_class("nyx-tb-btn")
             box.append(btn)
         self.set_child(box)
         self._box = box

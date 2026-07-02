@@ -146,12 +146,14 @@ window.nyx-square, window.nyx-square decoration {{ border-radius: 0; }}
 }}
 .nyx-titlebar-title {{
   color: {TEAL};
-  font-family: {FONT};
+  font-family: "Orbitron", {FONT};  /* Orbitron (OFL): el toque cyberpunk del título */
   font-size: 12px;
-  font-weight: bold;
-  letter-spacing: 2px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  padding: 2px 0;  /* aire vertical: sin esto el glow recorta el tope de las letras */
   text-shadow: 0 0 8px rgba({GLOW_RGB}, 0.6);
 }}
+.nyx-tb-btn {{ padding: 2px 5px; }}
 /* el mood tiñe glifo + título (mismas variantes legibles que .nyx-close) */
 .nyx-titlebar-fg-alert  {{ color: #ff2e5f; text-shadow: 0 0 8px rgba({RED_RGB}, 0.9); }}
 .nyx-titlebar-fg-heated {{ color: {AMBER}; text-shadow: 0 0 8px rgba({AMBER_RGB}, 0.85); }}
