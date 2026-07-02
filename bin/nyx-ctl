@@ -11,6 +11,8 @@
   tts [on|off] voz: sin arg alterna; on/off fija (persiste en config.json)
   say <texto> muestra un bocadillo
   session     sesión core: show | new (archiva el hilo) | open (kitty + claude --resume)
+  notifs [-n N] historial de notificaciones (incl. silenciadas)
+  dnd [on|off]  no molestar (las críticas siguen pasando)
   config      list | get <ruta> | set <ruta> <valor>  (rutas punteadas, valor JSON)
   reload      relee config.json en el daemon (aplica lo aplicable en vivo)
   logs [-f]   cola del log del daemon
@@ -429,6 +431,26 @@ def main() -> int:
         body = args[3] if len(args) > 3 else ""
         ok = send({"op": "notify", "app": app_name, "summary": summary, "body": body})
         print("ok" if ok else "daemon no responde (¿nyx-ctl on?)")
+    elif cmd == "notifs":
+        import time as _time
+        from nyx.notifqueue import load_recent
+        n = int(args[args.index("-n") + 1]) if "-n" in args[1:] else 20
+        recs = load_recent(n)
+        if not recs:
+            print("sin notificaciones registradas")
+        for r in recs:
+            hhmm = (_time.strftime("%H:%M", _time.localtime(r["ts"]))
+                    if r.get("ts") else "--:--")
+            mark = "" if r.get("shown", True) else " (silenciada)"
+            urg = " ‼" if int(r.get("urgency", 1)) >= 2 else ""
+            print(f"{hhmm}  {r.get('app') or 'sistema'} · {r.get('summary', '')}{urg}{mark}")
+    elif cmd == "dnd":
+        arg = (args[1].lower() if args[1:] else "").strip()
+        if arg in ("on", "off"):
+            nyxconfig.update({"notifications.dnd": arg == "on"})
+            send({"op": "reload"})
+        dnd = nyxconfig.get_path(nyxconfig.load(), "notifications.dnd")
+        print("DND activado (solo críticas)" if dnd else "DND apagado")
     elif cmd == "ping":
         print(send({"op": "ping"}))
     else:

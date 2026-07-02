@@ -41,6 +41,13 @@ _PANEL_CSS = f"""
 .nyx-history-nyx-heated {{ color: #ff9e00; }}
 .nyx-history-nyx-glad   {{ color: {theme.GLAD}; }}
 .nyx-history-nyx-dim    {{ color: {theme.DIM}; }}
+.nyx-history-notif {{
+  color: rgba(214,255,247,0.45);
+  font-family: {theme.FONT};
+  font-size: 12px;
+  padding: 2px 14px;
+}}
+.nyx-history-notif-silenced {{ color: rgba(139,131,91,0.55); }}
 """
 
 _WIDTH = 320
@@ -111,6 +118,23 @@ class HistoryPanel:
             if mood != "normal" and mood in theme.MOODS:
                 label.add_css_class(f"nyx-history-nyx-{mood}")  # solo override de color
 
+        self._listbox.append(label)
+        if self._visible:
+            GLib.idle_add(self._scroll_to_bottom)
+
+    def add_notification(self, n: dict, shown: bool = True) -> None:
+        """Fila compacta de notificación (las silenciadas también: esa es la gracia)."""
+        label = Gtk.Label()
+        label.set_wrap(True)
+        label.set_xalign(0.0)
+        label.set_max_width_chars(36)
+        app = n.get("app") or "sistema"
+        summary = n.get("summary") or ""
+        suffix = "" if shown else "  (silenciada)"
+        label.set_text(f"✶ {app} · {summary}{suffix}")
+        label.add_css_class("nyx-history-notif")
+        if not shown:
+            label.add_css_class("nyx-history-notif-silenced")
         self._listbox.append(label)
         if self._visible:
             GLib.idle_add(self._scroll_to_bottom)

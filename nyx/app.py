@@ -13,7 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from . import chatlog, config, policy, streamparse, theme  # noqa: E402
+from . import chatlog, config, notifqueue, policy, streamparse, theme  # noqa: E402
 from .activity import ActivityWatcher  # noqa: E402
 from .avatar import Orb  # noqa: E402
 from .backend import ClaudeBackend  # noqa: E402
@@ -78,6 +78,11 @@ class NyxApp(Gtk.Application):
         self.notifyd = None
         if config.get_path(self._config, "notifications.enabled"):
             self._start_notifyd()
+        # cola de notificaciones: el bocadillo muestra de una en una, sin metralleta
+        self._notif_queue = notifqueue.NotifQueue(
+            max_per_minute=config.get_path(self._config, "notifications.max_per_minute", 6))
+        self._notif_current: dict | None = None
+        self.bubble.on_hidden = self._on_bubble_hidden
         if self._persistent_mood != "normal":  # restaurar el tinte de reposo
             self.bubble.base_mood = self._persistent_mood
             self.bubble.set_mood(self._persistent_mood)
@@ -187,13 +192,14 @@ class NyxApp(Gtk.Application):
             reply({"ok": True})
         elif op == "notify":
             urg = msg.get("urgency")
-            GLib.idle_add(
-                self._show_notification,
-                (msg.get("app") or "").strip(),
-                (msg.get("summary") or "").strip(),
-                (msg.get("body") or "").strip(),
-                1 if urg is None else int(urg),
-            )
+            n = {
+                "id": 0,
+                "app": (msg.get("app") or "").strip(),
+                "summary": (msg.get("summary") or "").strip(),
+                "body": (msg.get("body") or "").strip(),
+                "urgency": 1 if urg is None else int(urg),
+            }
+            GLib.idle_add(self._notif_push, n)  # mismo pipeline que las D-Bus
             reply({"ok": True})
         elif op == "tts":
             if "on" in msg:  # set explícito (nyx-ctl tts on|off)
@@ -332,20 +338,56 @@ class NyxApp(Gtk.Application):
             self.tts.flush()
         return False
 
-    def _show_notification(self, app: str, summary: str, body: str, urgency: int) -> bool:
-        """Pinta una notificación como bocadillo efímero (sustituto del nativo de KDE)."""
+    # --- pipeline de notificaciones (op notify + D-Bus): clasifica → cola → bocadillo ---
+    def _notif_push(self, n: dict) -> bool:
+        rules = config.get_path(self._config, "notifications.rules", {}) or {}
+        dnd = bool(config.get_path(self._config, "notifications.dnd", False))
+        shown = notifqueue.classify(n, rules, dnd) == notifqueue.SHOW
+        self.history.add_notification(n, shown)
+        notifqueue.log_notification(n, shown=shown, ts=time.time())
+        if not shown:
+            return False  # silenciada: registrada, sin bocadillo
+        if self._notif_current and n.get("id") and n["id"] == self._notif_current.get("id"):
+            self._notif_show(n)  # replaces_id del visible: actualizar, no duplicar
+            return False
+        self._notif_queue.push(n, time.monotonic())
+        if self._notif_current is None and not self.backend.busy:
+            self._notif_show_next()
+        return False
+
+    def _notif_show_next(self) -> bool:
+        if self._notif_current is not None or self.backend.busy:
+            return False
+        n = self._notif_queue.next(time.monotonic())
+        if n:
+            self._notif_show(n)
+        return False
+
+    def _notif_show(self, n: dict) -> None:
+        self._notif_current = n
+        app, summary, body = n.get("app", ""), n.get("summary", ""), n.get("body", "")
         head = f"**{app}** · {summary}" if app and summary else (summary or app or "Notificación")
         text = f"{head}\n{body}" if body else head
+        urgency = int(n.get("urgency", 1))
         mood = "alert" if urgency >= 2 else "normal"  # crítica → rojo
         ttl = 9000 if urgency >= 2 else 6000
-        return self._ephemeral(text, ttl, mood)
+        self.bubble.show_text(text, ttl, mood if mood != "normal" else self._persistent_mood)
+        if mood != "normal":
+            self._flash_mood(mood, ttl)
+
+    def _on_bubble_hidden(self, dismissed: bool) -> None:
+        """El bocadillo se ocultó (TTL o ×): cerrar la notificación visible por spec
+        y mostrar la siguiente de la cola."""
+        n, self._notif_current = self._notif_current, None
+        if n and n.get("id") and self.notifyd:
+            from .notifyd import CLOSE_REASON_DISMISSED, CLOSE_REASON_EXPIRED
+            self.notifyd.close(int(n["id"]),
+                               CLOSE_REASON_DISMISSED if dismissed else CLOSE_REASON_EXPIRED)
+        GLib.idle_add(self._notif_show_next)
 
     def _on_dbus_notify(self, n: dict) -> None:
         """Callback del daemon D-Bus (corre en el bucle GLib); marshalea a la UI."""
-        GLib.idle_add(
-            self._show_notification,
-            n.get("app", ""), n.get("summary", ""), n.get("body", ""), int(n.get("urgency", 1)),
-        )
+        GLib.idle_add(self._notif_push, dict(n))
 
     def _summon(self) -> bool:
         self._listening = True
@@ -402,6 +444,11 @@ class NyxApp(Gtk.Application):
             self._flash_id = None
         self.inputbar.set_mood(self._persistent_mood)
         self._turn_text = ""
+        if self._notif_current is not None:  # el turno le quita el bocadillo a la notif
+            n, self._notif_current = self._notif_current, None
+            if n.get("id") and self.notifyd:
+                from .notifyd import CLOSE_REASON_EXPIRED
+                self.notifyd.close(int(n["id"]), CLOSE_REASON_EXPIRED)
         self.history.add_turn("operativo", text)
         chatlog.append_turn("operativo", text, ts=time.time())
         self.tts.stop()  # corta cualquier voz anterior antes del nuevo turno
@@ -443,6 +490,8 @@ class NyxApp(Gtk.Application):
             self._turns += 1
             self.inputbar.set_mood(self._persistent_mood)
             self._set_nyx("idle")
+            # las notifs retenidas durante el turno salen cuando el bocadillo de la
+            # respuesta se oculte (on_hidden → _notif_show_next), no antes
 
 
 def main() -> None:

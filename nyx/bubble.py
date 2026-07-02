@@ -31,6 +31,8 @@ class Bubble:
                  ttl_ms: int = 12000):
         self.default_ttl = int(ttl_ms)  # TTL por defecto de say/notify (config ui.bubble)
         self.base_mood = "normal"  # mood de reposo (el persistente del daemon)
+        self.on_hidden = None  # callback(dismissed: bool) al ocultarse (cola de notifs)
+        self._dismissed = False  # True si el ocultado vino del botón × (no del TTL)
         w = Gtk.ApplicationWindow(application=app)
         LS.init_for_window(w)
         LS.set_layer(w, LS.Layer.OVERLAY)
@@ -226,6 +228,7 @@ class Bubble:
             GLib.source_remove(self._fade_id)
             self._fade_id = None
         self._stop_type()
+        self._dismissed = True
         self._hide()
 
     def _hide(self) -> bool:
@@ -238,4 +241,10 @@ class Bubble:
         if not self.revealer.get_reveal_child():  # no re-abierto entretanto
             self.win.set_visible(False)
             self.set_mood(self.base_mood)  # reset visual al ocultar (reposo = mood persistente)
+            dismissed, self._dismissed = self._dismissed, False
+            if self.on_hidden is not None:
+                try:  # la cola de notifs decide si hay siguiente que mostrar
+                    self.on_hidden(dismissed)
+                except Exception:
+                    pass
         return False
