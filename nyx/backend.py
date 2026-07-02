@@ -3,12 +3,16 @@
 Fase 1 (rápida): resuelve la ruta ESTABLE del binario `claude` una vez (el shim de
 fnm es efímero) y lo lanza DIRECTO — sin `zsh -ic` (ahorra ~1s de arranque + ruido
 de p10k). Fallback a `zsh -ic 'exec claude "$@"'` si no se resuelve el binario.
-Un `claude -p` por turno con `--resume <session_id>` para continuidad. Modelo sonnet.
-Parser puro de `nyx/streamparse.py`. stderr silenciado.
+Un `claude -p` por turno con `--resume <session_id>` para continuidad. La sesión
+CORE se persiste en ~/.local/state/nyx/session.json: la conversación de Marc con
+Nyx sobrevive a reinicios del daemon. Si la sesión guardada ya no es recuperable
+(p.ej. ~/.claude limpiado), el turno se reintenta UNA vez desde cero sin perder
+el mensaje. Parser puro de `nyx/streamparse.py`. stderr silenciado.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -25,6 +29,8 @@ DEFAULT_MODEL = "sonnet"  # rápido/barato para chat; Opus para tareas pesadas
 NYX_CONFIG = os.path.expanduser("~/.config/nyx")
 _SETTINGS = os.path.join(NYX_CONFIG, "settings.json")
 _PERSONA = os.path.join(NYX_CONFIG, "persona.md")
+# estado de la sesión core (sobrevive reinicios del daemon)
+SESSION_STATE = os.path.expanduser("~/.local/state/nyx/session.json")
 
 
 def _read(path: str) -> str:
@@ -33,6 +39,33 @@ def _read(path: str) -> str:
             return f.read().strip()
     except OSError:
         return ""
+
+
+def _load_session() -> str | None:
+    try:
+        with open(SESSION_STATE, encoding="utf-8") as f:
+            sid = json.load(f).get("session_id")
+        return sid if isinstance(sid, str) and sid else None
+    except (OSError, ValueError):
+        return None
+
+
+def _save_session(sid: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(SESSION_STATE), exist_ok=True)
+        tmp = SESSION_STATE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"session_id": sid}, f)
+        os.replace(tmp, SESSION_STATE)
+    except OSError:
+        pass  # best-effort: sin persistencia la sesión sigue viva en memoria
+
+
+def _clear_session() -> None:
+    try:
+        os.remove(SESSION_STATE)
+    except OSError:
+        pass
 
 
 def _resolve_claude() -> str | None:
@@ -61,10 +94,19 @@ class ClaudeBackend:
     def __init__(self, on_signal: Callable[[object], None], model: str | None = None):
         self.on_signal = on_signal  # callback(signal), en el bucle GLib
         self.model = model or DEFAULT_MODEL  # config backend.model; aplica al siguiente turno
-        self.session_id: str | None = None
+        self.session_id: str | None = _load_session()  # sesión core: sobrevive reinicios
         self.busy = False
         self._parser = streamparse.StreamParser()
         self._claude_bin = _resolve_claude()  # una vez; None -> fallback zsh
+        self._prompt = ""  # turno en curso (para reintentar si el resume falla)
+        self._used_resume = False
+        self._retried = False
+        self._got_result = False
+
+    def reset_session(self) -> None:
+        """Empieza una sesión core nueva (op session_new): olvida el hilo anterior."""
+        self.session_id = None
+        _clear_session()
 
     def _argv(self, prompt: str) -> list[str]:
         if not (self._claude_bin and os.path.exists(self._claude_bin)):
@@ -85,6 +127,7 @@ class ClaudeBackend:
         persona = _read(_PERSONA)
         if persona:
             argv += ["--append-system-prompt", persona]  # personalidad de Nyx
+        self._used_resume = bool(self.session_id)
         if self.session_id:
             argv += ["--resume", self.session_id]
         return argv
@@ -94,7 +137,13 @@ class ClaudeBackend:
         if self.busy or not prompt:
             return False
         self.busy = True
+        self._prompt = prompt
+        self._retried = False
+        return self._spawn(prompt)
+
+    def _spawn(self, prompt: str) -> bool:
         self._parser = streamparse.StreamParser()
+        self._got_result = False
         try:
             # SubprocessLauncher para quitar TERM_PROGRAM: así el hook global de
             # sonido (condicionado a TERM_PROGRAM=ghostty) NO suena en los turnos de Nyx.
@@ -121,10 +170,23 @@ class ClaudeBackend:
         except GLib.Error:
             line = None
         if line is None:  # EOF → turno terminado
+            # `claude -p --resume <id>` con una sesión irrecuperable muere sin emitir
+            # `result`: reintenta el MISMO turno una vez desde cero (sesión nueva),
+            # sin perder el mensaje de Marc.
+            if not self._got_result and self._used_resume and not self._retried:
+                self._retried = True
+                self.session_id = None
+                _clear_session()
+                if self._spawn(self._prompt):
+                    return  # turno relanzado; este stream muere aquí
             self.busy = False
             return
         for sig in self._parser.feed_line(line):
             if isinstance(sig, streamparse.Init) and sig.session_id:
+                if sig.session_id != self.session_id:
+                    _save_session(sig.session_id)
                 self.session_id = sig.session_id
+            elif isinstance(sig, streamparse.Result):
+                self._got_result = True
             self.on_signal(sig)
         stream.read_line_async(GLib.PRIORITY_DEFAULT, None, self._on_line)

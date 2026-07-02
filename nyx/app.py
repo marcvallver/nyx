@@ -5,6 +5,7 @@ barra de entrada, y la confirmación de acciones (Fase 4: híbrido con confirmac
 from __future__ import annotations
 
 import os
+import time
 
 import gi
 
@@ -12,7 +13,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Gtk4LayerShell", "1.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
-from . import config, policy, streamparse, theme  # noqa: E402
+from . import chatlog, config, policy, streamparse, theme  # noqa: E402
 from .activity import ActivityWatcher  # noqa: E402
 from .avatar import Orb  # noqa: E402
 from .backend import ClaudeBackend  # noqa: E402
@@ -81,6 +82,10 @@ class NyxApp(Gtk.Application):
             self.bubble.base_mood = self._persistent_mood
             self.bubble.set_mood(self._persistent_mood)
             self._refresh_orb()
+        # hilo persistente de la sesión core: recuperar los últimos turnos al panel
+        chatlog.rotate()
+        for rec in chatlog.load_recent():
+            self.history.add_turn(rec["role"], rec["text"], rec.get("mood", "normal"))
 
     def _start_notifyd(self) -> None:
         """Arranca el daemon D-Bus org.freedesktop.Notifications (opt-in por config)."""
@@ -161,6 +166,22 @@ class NyxApp(Gtk.Application):
             reply({"ok": True})
         elif op == "reload":
             reply(self._reload_config())
+        elif op == "session_new":
+            self.backend.reset_session()
+            archived = chatlog.archive()
+            self._cost_last, self._cost_total, self._turns = None, 0.0, 0
+            GLib.idle_add(self.history.clear)
+            reply({"ok": True, "archived": archived})
+        elif op == "session_done":
+            # eco COMPACTO de una sesión de terminal (hook Stop): solo "sesión + repo",
+            # sin texto y NUNCA por voz — la voz de Nyx es exclusiva de su sesión core.
+            sid = (msg.get("session_id") or "").strip()
+            repo = (msg.get("repo") or "terminal").strip()
+            own = sid and sid == (self.backend.session_id or "")
+            if config.get_path(self._config, "terminal_echo.enabled", True) and not own:
+                GLib.idle_add(self._ephemeral,
+                              f"⌁ sesión `{repo}` · turno terminado", 5000, "normal", False)
+            reply({"ok": True})
         elif op == "history":
             GLib.idle_add(self.history.toggle)
             reply({"ok": True})
@@ -382,6 +403,7 @@ class NyxApp(Gtk.Application):
         self.inputbar.set_mood(self._persistent_mood)
         self._turn_text = ""
         self.history.add_turn("operativo", text)
+        chatlog.append_turn("operativo", text, ts=time.time())
         self.tts.stop()  # corta cualquier voz anterior antes del nuevo turno
         self._set_nyx("thinking")
         self.bubble.start_stream()
@@ -412,6 +434,8 @@ class NyxApp(Gtk.Application):
             self.tts.flush()  # habla lo que quede del turno
             if self._turn_text.strip():
                 self.history.add_turn("Nyx", self._turn_text, self._current_mood)
+                chatlog.append_turn("Nyx", self._turn_text, self._current_mood,
+                                    ts=time.time())
             self._turn_text = ""
             if sig.cost_usd is not None:  # métricas para `status`/panel de control
                 self._cost_last = sig.cost_usd

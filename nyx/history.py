@@ -115,6 +115,12 @@ class HistoryPanel:
         if self._visible:
             GLib.idle_add(self._scroll_to_bottom)
 
+    def clear(self) -> bool:
+        """Vacía el panel (sesión core nueva)."""
+        while (child := self._listbox.get_first_child()) is not None:
+            self._listbox.remove(child)
+        return False
+
     def _scroll_to_bottom(self) -> bool:
         adj = self._scroll.get_vadjustment()
         adj.set_value(adj.get_upper() - adj.get_page_size())

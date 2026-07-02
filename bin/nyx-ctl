@@ -8,6 +8,7 @@
   status      estado completo (modelo, sesión, mood, voz, coste…)
   tts [on|off] voz: sin arg alterna; on/off fija (persiste en config.json)
   say <texto> muestra un bocadillo
+  session     sesión core: show | new (archiva el hilo) | open (kitty + claude --resume)
   config      list | get <ruta> | set <ruta> <valor>  (rutas punteadas, valor JSON)
   reload      relee config.json en el daemon (aplica lo aplicable en vivo)
   logs [-f]   cola del log del daemon
@@ -176,6 +177,57 @@ def doctor() -> int:
     return 1 if bad else 0
 
 
+def session_cmd(args: list[str]) -> int:
+    """Sesión core de Nyx: show (default) | new | open."""
+    import shutil
+
+    sub = args[0] if args else "show"
+    if sub == "show":
+        resp = send({"op": "status"})
+        if not resp:
+            print("daemon parado (nyx-ctl on)")
+            return 1
+        from nyx.chatlog import CHAT_LOG
+        turns = 0
+        if os.path.exists(CHAT_LOG):
+            with open(CHAT_LOG, encoding="utf-8") as f:
+                turns = sum(1 for _ in f)
+        print(f"sesión core: {resp.get('session') or '(nueva — aún sin turnos)'}")
+        print(f"  modelo: {resp.get('model')} · turnos del daemon: {resp.get('turns', 0)}")
+        print(f"  hilo persistido: {CHAT_LOG} ({turns} entradas)")
+        print("  ver el hilo: nyx-ctl history (Meta+H) · abrir en terminal: "
+              "nyx-ctl session open")
+        return 0
+    if sub == "new":
+        resp = send({"op": "session_new"})
+        if not resp:
+            print("daemon parado (nyx-ctl on)")
+            return 1
+        arch = resp.get("archived")
+        print("sesión core nueva" + (f" (hilo anterior en {arch})" if arch else ""))
+        return 0
+    if sub == "open":
+        resp = send({"op": "status"})
+        sid = resp.get("session") if resp else None
+        if not sid:
+            print("no hay sesión core todavía (háblale primero a Nyx)", file=sys.stderr)
+            return 1
+        kitty = shutil.which("kitty")
+        if not kitty:
+            print(f"kitty no está; abre a mano:  claude --resume {sid}", file=sys.stderr)
+            return 1
+        subprocess.Popen(
+            [kitty, "--title", "nyx · sesión core", "--detach",
+             "zsh", "-ic", f"claude --resume {sid}"],
+            start_new_session=True,
+        )
+        print(f"abriendo la sesión core en kitty ({sid[:8]}…)")
+        print("ojo: si escribes AHÍ, bifurcas el hilo — Nyx sigue en el suyo")
+        return 0
+    print("uso: nyx-ctl session [show|new|open]", file=sys.stderr)
+    return 1
+
+
 def _print_reload(resp: dict) -> None:
     applied = resp.get("applied") or []
     restart = resp.get("restart_needed") or []
@@ -276,6 +328,8 @@ def main() -> int:
             print("daemon no responde (¿nyx-ctl on?)")
         else:
             print(f"mood: {resp.get('mood', '?')}")
+    elif cmd == "session":
+        return session_cmd(args[1:])
     elif cmd == "config":
         return config_cmd(args[1:])
     elif cmd == "reload":
@@ -299,7 +353,7 @@ def main() -> int:
         print(
             "uso: nyx-ctl on|off|restart|toggle|status|summon|listen|ask <texto>|say <texto>"
             "|mood <normal|alert|heated|glad|dim>|tts [on|off]|history"
-            "|notify <app> <summary> [body]"
+            "|notify <app> <summary> [body]|session [show|new|open]"
             "|config [list|get <ruta>|set <ruta> <valor>]|reload|logs [-f]|doctor|ping",
             file=sys.stderr,
         )
